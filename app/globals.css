@@ -1,0 +1,20 @@
+@import '98.css/dist/98.css';
+
+body {
+  background: #008080; /* Nostalgic teal desktop */
+  margin: 0;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th, .table td {
+  border: 1px solid #000;
+  padding: 6px;
+}
+
+.selected td {
+  background: #c0c0c0;
+}
