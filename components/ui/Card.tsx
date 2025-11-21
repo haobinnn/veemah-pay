@@ -1,0 +1,10 @@
+import React from "react";
+
+export function Card({ title, children, className }:{ title?: string; children?: React.ReactNode; className?: string }){
+  return (
+    <div className={`card ${className ?? ""}`}>
+      {title && <h3>{title}</h3>}
+      {children}
+    </div>
+  );
+}

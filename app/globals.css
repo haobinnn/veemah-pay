@@ -6,6 +6,20 @@
   --primary-600: #0758d1;
   --card: #ffffff;
   --border: #e5e8ef;
+  --success: #2e7d32;
+  --danger: #b00020;
+}
+
+[data-theme='dark'] {
+  --bg: #0b1320;
+  --text: #e6e9ef;
+  --muted: #9aa3b2;
+  --primary: #39b6ff;
+  --primary-600: #2a93cc;
+  --card: #0f1628;
+  --border: #243046;
+  --success: #4caf50;
+  --danger: #ff6b6b;
 }
 
 * { box-sizing: border-box; }
@@ -23,7 +37,7 @@ body {
 
 a { color: inherit; text-decoration: none; }
 
-.container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+.container { max-width: min(1280px, 100%); margin: 0 auto; padding: 0 clamp(16px, 3vw, 32px); }
 
 .site-header { background: var(--card); border-bottom: 1px solid var(--border); }
 .site-header .inner { display: flex; align-items: center; gap: 24px; padding: 16px 24px; justify-content: space-between; }
@@ -32,6 +46,7 @@ a { color: inherit; text-decoration: none; }
 .top-nav { display: flex; gap: 16px; color: var(--muted); }
 .top-nav a { padding: 8px; border-radius: 6px; }
 .top-nav a:hover { color: var(--text); background: #f1f4f9; }
+.top-nav .btn { padding: 8px 10px; }
 .search { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .search input { width: 220px; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: #f9fbff; }
 .search button { border: 0; background: var(--primary); color: #fff; padding: 10px 14px; border-radius: 8px; cursor: pointer; }
@@ -55,6 +70,9 @@ a { color: inherit; text-decoration: none; }
 .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border); background: #fff; cursor: pointer; }
 .btn.primary { background: var(--primary); color: #fff; border-color: transparent; }
 .btn.primary:active { background: var(--primary-600); }
+.btn.danger { background: var(--danger); color: #fff; border-color: transparent; }
+.btn.ghost { background: transparent; color: var(--text); }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .quick-actions { background: var(--card); }
 .quick-actions .inner { padding: 24px; }
@@ -79,6 +97,33 @@ input, select { width: 100%; border: 1px solid var(--border); border-radius: 10p
 .card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: grid; justify-items: center; text-align: center; }
 .icon { width: 40px; height: 40px; border-radius: 50%; background: #eef4ff; display: grid; place-items: center; color: var(--primary); font-weight: 700; }
 .card span { margin-top: 8px; font-size: 14px; color: var(--text); }
+
+/* Grid utilities */
+.grid { display: grid; }
+.grid-cols-1 { grid-template-columns: 1fr; }
+.grid-cols-2 { grid-template-columns: repeat(2,1fr); }
+.grid-cols-3 { grid-template-columns: repeat(3,1fr); }
+.grid-cols-4 { grid-template-columns: repeat(4,1fr); }
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.gap-16 { gap: 16px; }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: grid; place-items: center; z-index: 1000; }
+.modal { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 320px; max-width: 90vw; }
+.modal-close { position: absolute; top: 8px; right: 8px; }
+
+/* Toast */
+.toast-viewport { position: fixed; right: 16px; bottom: 16px; display: grid; gap: 8px; z-index: 1000; }
+.toast { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 8px; box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
+.toast.success { border-color: var(--success); }
+.toast.error { border-color: var(--danger); }
+
+/* Stepper */
+.stepper { display: grid; gap: 12px; }
+.stepper-head { display: flex; gap: 6px; }
+.step { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--border); color: var(--muted); }
+.step.active { background: var(--primary); color: #fff; border-color: transparent; }
 
 .advisories { background: var(--card); border-top: 1px solid var(--border); }
 .advisories .inner { padding: 16px 24px 32px; }
