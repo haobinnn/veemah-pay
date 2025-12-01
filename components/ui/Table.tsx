@@ -16,3 +16,4 @@ export function Table({ headers, rows }:{ headers: string[]; rows: (React.ReactN
     </table>
   );
 }
+

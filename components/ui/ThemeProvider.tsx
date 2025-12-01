@@ -39,3 +39,4 @@ export function ThemeToggle(){
     <button className="btn ghost" aria-label="Toggle theme" onClick={() => setTheme(next)}>{theme === "dark" ? "☀️" : "🌙"}</button>
   );
 }
+

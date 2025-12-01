@@ -20,3 +20,4 @@ export function StepWizard({ steps, current, onNext, onPrev }:{ steps: React.Rea
     </div>
   );
 }
+

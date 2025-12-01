@@ -1,4 +1,4 @@
-# RGBC Banking — Team Setup
+# Veemah Pay — Team Setup
 
 This repo includes a one-command local PostgreSQL setup and a Next.js app. New teammates can get running in minutes with Docker.
 

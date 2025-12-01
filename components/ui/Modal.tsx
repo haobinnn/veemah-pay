@@ -16,3 +16,4 @@ export function Modal({ open, onClose, children }:{ open: boolean; onClose: () =
     document.body
   );
 }
+

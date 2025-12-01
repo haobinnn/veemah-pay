@@ -25,3 +25,4 @@ export function IconButton({ ariaLabel, onClick, disabled, icon, variant = "ghos
     </button>
   );
 }
+

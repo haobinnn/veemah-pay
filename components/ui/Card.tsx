@@ -8,3 +8,4 @@ export function Card({ title, children, className }:{ title?: string; children?:
     </div>
   );
 }
+

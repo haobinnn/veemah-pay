@@ -19,7 +19,7 @@ public class main {
     }
 
     private static void showMainMenu() {
-        String choice = JOptionPane.showInputDialog(null, "RGBC\nRichard Gwapo Banking Corporation\nS -> Start Transaction\nQ -> Quit\nEnter your choice:");
+        String choice = JOptionPane.showInputDialog(null, "Veemah Pay\nS -> Start Transaction\nQ -> Quit\nEnter your choice:");
 
         if (choice == null) {
             System.exit(0);
@@ -43,7 +43,7 @@ public class main {
         JTextField field2 = new JTextField();
 
         Object[] fields = {
-                "RGBC\nRichard Gwapo Banking Corporation\n\nEnter account number:", field1,
+                "Veemah Pay\n\nEnter account number:", field1,
                 "Enter pin number:", field2
         };
 
@@ -97,7 +97,7 @@ public class main {
             JTextField field2 = new JTextField();
 
             Object[] fields = {
-                    "RGBC\nRichard Gwapo Banking Corporation\n\nEnter account number:", field1,
+                    "Veemah Pay\n\nEnter account number:", field1,
                     "Enter pin number:", field2
             };
 

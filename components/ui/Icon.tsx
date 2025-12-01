@@ -34,3 +34,4 @@ export function Icon({ name, size = 18, color = "currentColor", className }: { n
     </svg>
   );
 }
+
