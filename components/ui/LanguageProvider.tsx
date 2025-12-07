@@ -20,8 +20,8 @@ const translations: Translations = {
   'nav.admin': { en: 'Admin', tl: 'Admin' },
 
   // Home
-  'home.hero.title_line1': { en: 'The Future of', tl: 'Ang Kinabukasan ng' },
-  'home.hero.title_line2': { en: 'Digital Banking', tl: 'Digital Banking' },
+  'home.hero.title_line1': { en: 'VeemahPay', tl: 'VeemahPay' },
+  'home.hero.title_line2': { en: '', tl: '' },
   'home.hero.description': { en: 'Secure, fast, and intelligent financial management. Join VeemahPay today and take control of your wealth with our AI-powered platform.', tl: 'Ligtas, mabilis, at matalinong pamamahala ng pananalapi. Sumali sa VeemahPay ngayon at kontrolin ang iyong yaman gamit ang aming AI-powered platform.' },
   'home.hero.title': { en: 'Banking for the Next Generation', tl: 'Bangko para sa Bagong Henerasyon' },
   'home.hero.subtitle': { en: 'Fast, secure, and easy payments.', tl: 'Mabilis, ligtas, at madaling bayad.' },

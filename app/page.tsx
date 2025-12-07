@@ -37,7 +37,7 @@ export default function Page() {
                backgroundClip: 'text',
                color: 'transparent' // Fallback
              }}>
-               {t('home.hero.title_line1')} <br /> {t('home.hero.title_line2')}
+               {t('home.hero.title_line1')}
              </h1>
              
              <p style={{ 
