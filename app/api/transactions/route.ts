@@ -3,6 +3,154 @@ import { pool } from '@/lib/db';
 
 type TxType = 'deposit' | 'withdraw' | 'transfer';
 
+type Contact = { account_number: string; name?: string | null; email?: string | null };
+
+function formatMoney(amount: number) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return '₱0.00';
+  return `₱${n.toFixed(2)}`;
+}
+
+async function sendResendEmail(args: { to: string; subject: string; html: string; text: string }) {
+  try {
+    if (!process.env.RESEND_API_KEY) {
+      console.log('[EMAIL MOCK]', { to: args.to, subject: args.subject });
+      return false;
+    }
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
+        to: args.to,
+        subject: args.subject,
+        html: args.html,
+        text: args.text,
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('Resend API Error:', errText);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('[EMAIL SEND ERROR]', e);
+    return false;
+  }
+}
+
+function buildReceiptEmail(args: {
+  title: string;
+  subtitle: string;
+  transactionId: number | string;
+  status: string;
+  type: string;
+  amount: number;
+  occurredAt: Date;
+  fromAccount?: string | null;
+  toAccount?: string | null;
+  note?: string | null;
+  sourceBalanceBefore?: number | null;
+  sourceBalanceAfter?: number | null;
+  targetBalanceBefore?: number | null;
+  targetBalanceAfter?: number | null;
+}) {
+  const occurred = args.occurredAt.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const receiptNo = `VP-${String(args.transactionId).padStart(6, '0')}`;
+  const amountStr = formatMoney(args.amount);
+  const safeNote = String(args.note ?? '').trim();
+
+  const rows: Array<[string, string]> = [
+    ['Receipt #', receiptNo],
+    ['Transaction ID', String(args.transactionId)],
+    ['Type', String(args.type)],
+    ['Status', String(args.status)],
+    ['Date', occurred],
+    ['Amount', amountStr],
+  ];
+
+  if (args.fromAccount) rows.push(['From', String(args.fromAccount)]);
+  if (args.toAccount) rows.push(['To', String(args.toAccount)]);
+  if (safeNote) rows.push(['Note', safeNote]);
+
+  if (args.sourceBalanceBefore != null) rows.push(['Source balance before', formatMoney(Number(args.sourceBalanceBefore))]);
+  if (args.sourceBalanceAfter != null) rows.push(['Source balance after', formatMoney(Number(args.sourceBalanceAfter))]);
+  if (args.targetBalanceBefore != null) rows.push(['Target balance before', formatMoney(Number(args.targetBalanceBefore))]);
+  if (args.targetBalanceAfter != null) rows.push(['Target balance after', formatMoney(Number(args.targetBalanceAfter))]);
+
+  const htmlRows = rows
+    .map(
+      ([k, v]) =>
+        `<tr>
+          <td style="padding:10px 12px;border-bottom:1px solid #e6e8ee;color:#5b667a;font-size:13px;width:40%;">${k}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e6e8ee;color:#0b1320;font-size:13px;font-weight:600;">${v}</td>
+        </tr>`
+    )
+    .join('');
+
+  const html = `<!doctype html>
+  <html>
+    <body style="margin:0;background:#f7f8fb;padding:24px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+      <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e5e8ef;border-radius:14px;overflow:hidden;">
+        <div style="padding:18px 22px;background:linear-gradient(135deg,#0a6bff,#39b6ff);color:#ffffff;">
+          <div style="font-size:16px;font-weight:800;letter-spacing:.2px;">VeemahPay</div>
+          <div style="margin-top:6px;font-size:20px;font-weight:800;">${args.title}</div>
+          <div style="margin-top:4px;font-size:13px;opacity:.9;">${args.subtitle}</div>
+        </div>
+        <div style="padding:18px 22px;">
+          <table style="width:100%;border-collapse:collapse;border:1px solid #eef1f6;border-radius:12px;overflow:hidden;">
+            <tbody>
+              ${htmlRows}
+            </tbody>
+          </table>
+          <div style="margin-top:14px;color:#5b667a;font-size:12px;line-height:1.5;">
+            If you did not authorize this activity, please contact support immediately.
+          </div>
+        </div>
+        <div style="padding:14px 22px;border-top:1px solid #e5e8ef;color:#5b667a;font-size:12px;">
+          This is an automated message. Please do not reply.
+        </div>
+      </div>
+    </body>
+  </html>`;
+
+  const text = rows.map(([k, v]) => `${k}: ${v}`).join('\n');
+  return { html, text, receiptNo };
+}
+
+async function getContacts(client: any, accountNumbers: string[]): Promise<Record<string, Contact>> {
+  const out: Record<string, Contact> = {};
+  const uniq = Array.from(new Set(accountNumbers.filter(Boolean)));
+  if (uniq.length === 0) return out;
+
+  const colsRes = await client.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'accounts'`
+  );
+  const cols: string[] = colsRes.rows.map((r: any) => r.column_name);
+  const hasEmail = cols.includes('email');
+  const hasName = cols.includes('name');
+
+  const select = [
+    'account_number',
+    hasName ? 'name' : 'NULL::text AS name',
+    hasEmail ? 'email' : 'NULL::text AS email',
+  ].join(', ');
+
+  const res = await client.query(`SELECT ${select} FROM accounts WHERE account_number = ANY($1::text[])`, [uniq]);
+  for (const row of res.rows as Contact[]) out[row.account_number] = row;
+  return out;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
@@ -140,11 +288,9 @@ export async function GET(req: NextRequest) {
 }
 
   export async function POST(req: NextRequest) {
-    console.log('[POST /api/transactions] Request received');
     let client;
     try {
       const body = await req.json();
-      console.log('[POST /api/transactions] Payload:', body);
       const { type, source_account, target_account, amount, note, pending, pin } = body;
     const session = req.cookies.get('session')?.value;
     const t: TxType = type;
@@ -321,6 +467,81 @@ export async function GET(req: NextRequest) {
     }
 
     await client.query('COMMIT');
+
+    try {
+      if (status === 'Completed' && tx?.id) {
+        const contacts = await getContacts(pool, [source_account, target_account].filter(Boolean) as string[]);
+        const occurredAt = new Date(tx.completed_at ?? tx.created_at ?? Date.now());
+
+        const base = {
+          transactionId: tx.id,
+          status: tx.status,
+          type: tx.type,
+          amount: Number(tx.amount),
+          occurredAt,
+          fromAccount: tx.account_number ?? source_account,
+          toAccount: tx.target_account ?? target_account ?? null,
+          note: tx.note ?? null,
+          sourceBalanceBefore: tx.source_balance_before ?? srcBefore ?? null,
+          sourceBalanceAfter: tx.source_balance_after ?? srcAfter ?? null,
+          targetBalanceBefore: tx.target_balance_before ?? trgBefore ?? null,
+          targetBalanceAfter: tx.target_balance_after ?? trgAfter ?? null,
+        };
+
+        if (String(tx.type).toLowerCase() === 'transfer') {
+          const sender = contacts[source_account];
+          const recipient = target_account ? contacts[target_account] : undefined;
+
+          if (sender?.email) {
+            const built = buildReceiptEmail({
+              ...base,
+              title: 'Transfer Receipt',
+              subtitle: 'Your transfer has been completed.',
+            });
+            await sendResendEmail({
+              to: sender.email,
+              subject: `VeemahPay Receipt ${built.receiptNo} · Transfer Completed`,
+              html: built.html,
+              text: built.text,
+            });
+          }
+
+          if (recipient?.email) {
+            const built = buildReceiptEmail({
+              ...base,
+              title: 'Transfer Received',
+              subtitle: 'You received a transfer.',
+            });
+            await sendResendEmail({
+              to: recipient.email,
+              subject: `VeemahPay Receipt ${built.receiptNo} · Transfer Received`,
+              html: built.html,
+              text: built.text,
+            });
+          }
+        } else {
+          const owner = contacts[source_account];
+          if (owner?.email) {
+            const prettyType = String(tx.type).toLowerCase() === 'deposit' ? 'Deposit' : 'Withdrawal';
+            const built = buildReceiptEmail({
+              ...base,
+              title: `${prettyType} Receipt`,
+              subtitle: `Your ${prettyType.toLowerCase()} has been completed.`,
+              toAccount: null,
+            });
+            await sendResendEmail({
+              to: owner.email,
+              subject: `VeemahPay Receipt ${built.receiptNo} · ${prettyType} Completed`,
+              html: built.html,
+              text: built.text,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Receipt email error:', e);
+    }
+
     return NextResponse.json({ transaction: tx });
   } catch (err: any) {
     if (client) await client.query('ROLLBACK');

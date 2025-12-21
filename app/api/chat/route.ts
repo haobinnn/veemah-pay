@@ -7,8 +7,6 @@ export async function POST(req: NextRequest) {
   const { message, history } = await req.json();
   const session = req.cookies.get('session')?.value;
 
-  console.log("Chat Request - Session:", session);
-
   let userContext = "User is not logged in. Treat them as a guest interested in VeemahPay banking services.";
   let user: any = null;
   let recentTx: any[] = [];
@@ -67,7 +65,6 @@ export async function POST(req: NextRequest) {
           RECENT SYSTEM-WIDE TRANSACTIONS:
           ${txLines}
         `;
-        console.log("Chat - Admin Context Loaded");
 
       } else {
         // --- REGULAR USER LOGIC ---
@@ -132,16 +129,13 @@ export async function POST(req: NextRequest) {
             Recent Transactions:
             ${transactions}
           `;
-          console.log("Chat - User Context Loaded for:", user.account_number);
         } else {
-          console.log("Chat - Session present but user not found in DB or fetch failed");
         }
       }
     } catch (err) {
       console.error("Error fetching user context (outer):", err);
     }
   } else {
-    console.log("Chat - No session cookie found");
   }
 
   const systemPrompt = `
@@ -189,7 +183,6 @@ export async function POST(req: NextRequest) {
 
       for (const m of models) {
         try {
-          console.log("Chat - Gemini attempt:", m);
           const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${GEMINI_API_KEY}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -202,7 +195,6 @@ export async function POST(req: NextRequest) {
           }
           const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
           if (reply && typeof reply === 'string' && reply.trim().length > 0) {
-            console.log("Chat - Gemini Success:", m);
             return NextResponse.json({ reply });
           }
         } catch (innerErr) {
@@ -215,7 +207,6 @@ export async function POST(req: NextRequest) {
       console.error("Chat - Gemini Exception:", err);
     }
   } else {
-    console.log("Chat - Gemini API Key missing, skipping AI");
   }
 
   // Fallback / Mock AI Logic

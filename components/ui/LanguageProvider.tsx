@@ -129,6 +129,15 @@ const translations: Translations = {
   'graph.no_data': { en: 'No transaction data to display yet.', tl: 'Wala pang datos ng transaksyon.' },
   'graph.income': { en: 'Income', tl: 'Kita' },
   'graph.expense': { en: 'Expense', tl: 'Gastusin' },
+  'graph.last_30_days': { en: 'Last 30 days', tl: 'Huling 30 araw' },
+  'graph.net': { en: 'Net', tl: 'Net' },
+  'graph.expense_avg_7d': { en: 'Expense (7d avg)', tl: 'Gastusin (7-araw avg)' },
+  'graph.expense_by_category': { en: 'Expense by category', tl: 'Gastusin ayon sa kategorya' },
+  'graph.monthly_trend': { en: 'Monthly trend', tl: 'Buwanang trend' },
+  'graph.this_month': { en: 'This month', tl: 'Ngayong buwan' },
+  'graph.last_month': { en: 'Last month', tl: 'Nakaraang buwan' },
+  'graph.change': { en: 'Change', tl: 'Pagbabago' },
+  'graph.other': { en: 'Other', tl: 'Iba pa' },
 
   // Chatbot
   'chat.placeholder': { en: 'Ask Veema anything...', tl: 'Magtanong kay Veema...' },

@@ -2,8 +2,10 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
-// Load env vars roughly (since dotenv might not be set up for this script context)
-// Use process.env.DATABASE_URL if available.
+require('dotenv').config({ path: path.join(__dirname, '../.env.local') });
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+require('dotenv').config({ path: path.join(__dirname, '../.env.example') });
+
 const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
@@ -15,11 +17,20 @@ const pool = new Pool({ connectionString });
 
 async function migrate() {
   try {
-    const sqlPath = path.join(__dirname, '../db/migrations/005_add_password.sql');
-    const sql = fs.readFileSync(sqlPath, 'utf8');
-    console.log('Running migration...');
-    await pool.query(sql);
-    console.log('Migration complete.');
+    const migrationsDir = path.join(__dirname, '../db/migrations');
+    const files = fs
+      .readdirSync(migrationsDir)
+      .filter((f) => f.endsWith('.sql'))
+      .sort((a, b) => a.localeCompare(b));
+
+    for (const file of files) {
+      const sqlPath = path.join(migrationsDir, file);
+      const sql = fs.readFileSync(sqlPath, 'utf8');
+      console.log(`Running migration: ${file}`);
+      await pool.query(sql);
+    }
+
+    console.log('All migrations complete.');
   } catch (e) {
     console.error('Migration failed:', e);
   } finally {

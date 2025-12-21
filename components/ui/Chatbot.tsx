@@ -17,6 +17,7 @@ export function Chatbot() {
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const typingIdRef = useRef(0);
   const { t } = useLanguage();
   const pathname = usePathname();
 
@@ -47,7 +48,39 @@ export function Chatbot() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+      const reply = String(data.reply ?? '');
+      if (!reply.trim()) {
+        setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I could not generate a reply.' }]);
+      } else {
+        typingIdRef.current += 1;
+        const currentId = typingIdRef.current;
+        setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+        const fullText = reply;
+        const length = fullText.length;
+        const chunkSize = 6;
+        let index = 0;
+
+        const step = () => {
+          if (typingIdRef.current !== currentId) return;
+          index = Math.min(index + chunkSize, length);
+          const nextText = fullText.slice(0, index);
+          setMessages(prev => {
+            const updated = [...prev];
+            for (let i = updated.length - 1; i >= 0; i--) {
+              if (updated[i].role === 'assistant') {
+                updated[i] = { ...updated[i], content: nextText };
+                break;
+              }
+            }
+            return updated;
+          });
+          if (index < length) {
+            setTimeout(step, 16);
+          }
+        };
+
+        step();
+      }
     } catch (e) {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I am having trouble connecting right now.' }]);
     } finally {

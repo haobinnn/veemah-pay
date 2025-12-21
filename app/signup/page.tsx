@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Header } from '@/components/nav/Header';
 import { useLanguage } from '@/components/ui/LanguageProvider';
 import { ParallaxBackground } from '@/components/landing/ParallaxBackground';
+import { Modal } from "@/components/ui/Modal";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -15,12 +16,18 @@ export default function SignupPage() {
   const [pin, setPin] = useState("");
   const [initialBalance, setInitialBalance] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [tosOpen, setTosOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [awaitingVerification, setAwaitingVerification] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [resendStatus, setResendStatus] = useState<string | null>(null);
   const [devCode, setDevCode] = useState<string | undefined>(undefined);
+
+  const apiBase =
+    typeof window !== "undefined"
+      ? window.location.origin.replace("://0.0.0.0", "://localhost")
+      : "";
 
   const submit = async () => {
     console.log("Submit clicked");
@@ -41,7 +48,7 @@ export default function SignupPage() {
     console.log("Validation passed, sending request...");
     setPending(true);
     try {
-      const res = await fetch("/api/signup", {
+      const res = await fetch(`${apiBase}/api/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -50,7 +57,7 @@ export default function SignupPage() {
           password,
           pin,
           initial_balance: initialBalance ? Number(initialBalance) : 0,
-          terms_accepted: true
+          terms_accepted: termsAccepted
         }),
       });
       const data = await res.json();
@@ -79,7 +86,7 @@ export default function SignupPage() {
       }
     } catch (e: any) {
       console.error("Signup error:", e);
-      setError(e?.message || "Sign up failed");
+      setError(e?.message || `Unable to reach ${apiBase}. Is the server running?`);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setPending(false);
@@ -91,7 +98,7 @@ export default function SignupPage() {
     setError(null);
     setPending(true);
     try {
-      const res = await fetch("/api/verify-email", {
+      const res = await fetch(`${apiBase}/api/verify-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, code: verificationCode }),
@@ -148,7 +155,7 @@ export default function SignupPage() {
           setPending(true);
           setError(null);
           try {
-            const res = await fetch("/api/verify-email/resend", {
+            const res = await fetch(`${apiBase}/api/verify-email/resend`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ email }),
@@ -208,7 +215,17 @@ export default function SignupPage() {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
         <input type="checkbox" id="terms" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} style={{ width: 'auto', margin: 0 }} />
-        <label htmlFor="terms" style={{ fontSize: '14px' }}>{t('signup.terms')}</label>
+        <label htmlFor="terms" style={{ fontSize: '14px' }}>
+          {t('signup.terms')}{' '}
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => setTosOpen(true)}
+            style={{ padding: '4px 8px', fontSize: '12px', lineHeight: 1.2 }}
+          >
+            View
+          </button>
+        </label>
       </div>
       <button 
         type="button"
@@ -246,6 +263,68 @@ export default function SignupPage() {
           </div>
         </section>
       </div>
+      <Modal open={tosOpen} onClose={() => setTosOpen(false)}>
+        <div style={{ display: 'grid', gap: 12, position: 'relative' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 18 }}>VeemahPay Terms of Service</h3>
+            <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 12 }}>Last updated: December 21, 2025</div>
+          </div>
+          <div style={{ maxHeight: '60vh', overflow: 'auto', paddingRight: 8, display: 'grid', gap: 12, fontSize: 13, lineHeight: 1.6 }}>
+            <div>
+              These Terms of Service (“Terms”) govern your access to and use of VeemahPay (the “Service”). By creating an account or using the Service, you agree to these Terms.
+            </div>
+            <div>
+              <strong>1. Eligibility and Account Registration.</strong> You must provide accurate, complete, and up-to-date information and maintain the confidentiality of your credentials. You are responsible for all activity under your account.
+            </div>
+            <div>
+              <strong>2. Security and Acceptable Use.</strong> Do not misuse the Service, attempt unauthorized access, interfere with operation, or use the Service for unlawful, fraudulent, or abusive purposes. You must promptly notify us of any suspected unauthorized activity.
+            </div>
+            <div>
+              <strong>3. Transactions and Authorizations.</strong> By initiating deposits, withdrawals, or transfers, you authorize VeemahPay to process those instructions. Transaction availability, processing time, and limits may vary and can be changed to protect you, other users, and the Service.
+            </div>
+            <div>
+              <strong>4. Currency.</strong> Amounts are presented and recorded in a single currency. VeemahPay does not currently support holding multiple currencies or foreign exchange (FX) conversion.
+            </div>
+            <div>
+              <strong>5. Fees and Taxes.</strong> Certain features may have fees, which will be disclosed in the Service prior to completion when applicable. You are responsible for any taxes or government charges associated with your use of the Service.
+            </div>
+            <div>
+              <strong>6. Communications.</strong> We may send you service-related notices and security alerts to the email address you provide. You agree that electronic communications satisfy legal notice requirements where permitted.
+            </div>
+            <div>
+              <strong>7. Privacy.</strong> Our collection and use of information is described in our privacy practices within the Service. You consent to our processing of your information to provide, secure, and improve the Service.
+            </div>
+            <div>
+              <strong>8. Availability and Changes.</strong> The Service may be modified, suspended, or discontinued at any time, including for maintenance or security reasons. We may update these Terms from time to time; continued use after an update constitutes acceptance of the updated Terms.
+            </div>
+            <div>
+              <strong>9. Termination.</strong> We may suspend or terminate access to the Service if we reasonably believe you violated these Terms, pose a risk to the Service, or where required by law. You may stop using the Service at any time.
+            </div>
+            <div>
+              <strong>10. Disclaimers.</strong> The Service is provided on an “as is” and “as available” basis. To the maximum extent permitted by law, we disclaim warranties of merchantability, fitness for a particular purpose, and non-infringement.
+            </div>
+            <div>
+              <strong>11. Limitation of Liability.</strong> To the maximum extent permitted by law, VeemahPay will not be liable for indirect, incidental, special, consequential, or punitive damages, or any loss of profits or data, arising from or related to your use of the Service.
+            </div>
+            <div>
+              <strong>12. Contact.</strong> If you have questions about these Terms, contact support via the channels provided within the Service.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" className="btn" onClick={() => setTosOpen(false)}>Close</button>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => {
+                setTermsAccepted(true);
+                setTosOpen(false);
+              }}
+            >
+              I Agree
+            </button>
+          </div>
+        </div>
+      </Modal>
     </main>
   );
 }

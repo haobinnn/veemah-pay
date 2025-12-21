@@ -9,32 +9,19 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS pending_signups (
-        email TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        hashed_password TEXT NOT NULL,
-        pin TEXT NOT NULL,
-        initial_balance NUMERIC(12,2) NOT NULL DEFAULT 0,
-        terms_accepted BOOLEAN NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      )
-    `);
+    const pendTable = await pool.query(`SELECT to_regclass('public.pending_signups') AS r`);
+    if (!pendTable.rows?.[0]?.r) {
+      return NextResponse.json({ error: 'Database missing pending_signups table. Run migrations.' }, { status: 500 });
+    }
     const pendRes = await pool.query(`SELECT 1 FROM pending_signups WHERE email = $1`, [em]);
     if (pendRes.rowCount === 0) {
       return NextResponse.json({ error: 'No pending signup found for this email' }, { status: 404 });
     }
 
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS email_verification_codes (
-        email TEXT PRIMARY KEY,
-        account_number TEXT NOT NULL,
-        code TEXT NOT NULL,
-        expires_at TIMESTAMPTZ NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-        verified_at TIMESTAMPTZ NULL
-      )
-    `);
+    const verTable = await pool.query(`SELECT to_regclass('public.email_verification_codes') AS r`);
+    if (!verTable.rows?.[0]?.r) {
+      return NextResponse.json({ error: 'Database missing email_verification_codes table. Run migrations.' }, { status: 500 });
+    }
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
     await pool.query(
@@ -64,7 +51,6 @@ export async function POST(req: NextRequest) {
         console.error('Resend API Error:', errText);
       }
     } else {
-      console.log('[EMAIL VERIFICATION MOCK] To:', em, '| Code:', code);
     }
 
     const showDevCode =

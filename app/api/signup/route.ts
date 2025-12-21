@@ -45,56 +45,22 @@ export async function POST(req: NextRequest) {
     const hasPassword = cols.includes('password');
     const hasTerms = cols.includes('terms_accepted');
     if (hasEmail) {
-      try {
-        const existsEmail = await pool.query('SELECT 1 FROM accounts WHERE email = $1', [em]);
-        if (Number(existsEmail.rowCount ?? 0) > 0) {
-          return NextResponse.json({ error: 'Email already registered.' }, { status: 409 });
-        }
-        // Optional: enforce uniqueness at DB level if not already present
-        await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS accounts_email_key ON accounts(email)');
-      } catch (e) {
-        // If index creation fails due to existing duplicates, rely on application-level check above
+      const existsEmail = await pool.query('SELECT 1 FROM accounts WHERE email = $1', [em]);
+      if (Number(existsEmail.rowCount ?? 0) > 0) {
+        return NextResponse.json({ error: 'Email already registered.' }, { status: 409 });
       }
     }
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS pending_signups (
-        email TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        hashed_password TEXT NOT NULL,
-        pin TEXT NOT NULL,
-        initial_balance NUMERIC(12,2) NOT NULL DEFAULT 0,
-        terms_accepted BOOLEAN NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      )
-    `);
+
+    const pendTable = await pool.query(`SELECT to_regclass('public.pending_signups') AS r`);
+    if (!pendTable.rows?.[0]?.r) {
+      return NextResponse.json({ error: 'Database missing pending_signups table. Run migrations.' }, { status: 500 });
+    }
     const pendExists = await pool.query('SELECT 1 FROM pending_signups WHERE email = $1', [em]);
     if (Number(pendExists.rowCount ?? 0) > 0) {
       return NextResponse.json({ error: 'Email already registered.' }, { status: 409 });
     }
-    // Ensure DB pin constraints permit 4–5 digits, for legacy compatibility
-    const pinLenRes = await pool.query(
-      `SELECT character_maximum_length, data_type FROM information_schema.columns WHERE table_name = 'accounts' AND column_name = 'pin'`
-    );
-    const pinLen = Number(pinLenRes.rows?.[0]?.character_maximum_length ?? 0);
-    const pinType = String(pinLenRes.rows?.[0]?.data_type ?? '');
-    if (pinType.includes('character') && pinLen > 0 && pinLen < 5) {
-      await pool.query(`ALTER TABLE accounts ALTER COLUMN pin TYPE VARCHAR(5)`);
-    }
-    await pool.query(`ALTER TABLE accounts DROP CONSTRAINT IF EXISTS pin_format_check`);
-    await pool.query(`ALTER TABLE accounts ADD CONSTRAINT pin_format_check CHECK (char_length(pin) BETWEEN 4 AND 5 AND pin ~ '^[0-9]+$')`);
 
     // Do NOT create an account row yet. Store pending signup and send verification code.
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS pending_signups (
-        email TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        hashed_password TEXT NOT NULL,
-        pin TEXT NOT NULL,
-        initial_balance NUMERIC(12,2) NOT NULL DEFAULT 0,
-        terms_accepted BOOLEAN NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      )
-    `);
     const hashed = await bcrypt.hash(pwd, 10);
     await pool.query(
       `INSERT INTO pending_signups (email, name, hashed_password, pin, initial_balance, terms_accepted)
@@ -109,16 +75,10 @@ export async function POST(req: NextRequest) {
       [em, nm, hashed, pn, init, terms]
     );
 
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS email_verification_codes (
-        email TEXT PRIMARY KEY,
-        account_number TEXT NOT NULL,
-        code TEXT NOT NULL,
-        expires_at TIMESTAMPTZ NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-        verified_at TIMESTAMPTZ NULL
-      )
-    `);
+    const verTable = await pool.query(`SELECT to_regclass('public.email_verification_codes') AS r`);
+    if (!verTable.rows?.[0]?.r) {
+      return NextResponse.json({ error: 'Database missing email_verification_codes table. Run migrations.' }, { status: 500 });
+    }
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
     await pool.query(
@@ -148,7 +108,6 @@ export async function POST(req: NextRequest) {
         console.error('Resend API Error:', errText);
       }
     } else {
-      console.log('[EMAIL VERIFICATION MOCK] To:', em, '| Code:', code);
     }
 
     const showDevCode =
