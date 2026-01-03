@@ -1,4 +1,22 @@
+/* Default to dark theme to prevent white flash */
 :root {
+  --bg: #0b1320;
+  --text: #e6e9ef;
+  --muted: #9aa3b2;
+  --primary: #2386c1;
+  --primary-600: #2a93cc;
+  --card: #0f1628;
+  --border: #243046;
+  --success: #4caf50;
+  --danger: #ff6b6b;
+  --table-zebra: rgba(255, 255, 255, 0.03);
+  --table-hover: rgba(57, 182, 255, 0.10);
+  --table-selected: rgba(57, 182, 255, 0.16);
+  --accent-soft: rgba(57, 182, 255, 0.12);
+}
+
+/* Light theme overrides */
+[data-theme='light'] {
   --bg: #f7f8fb;
   --text: #0b1320;
   --muted: #5b667a;
@@ -18,7 +36,7 @@
   --bg: #0b1320;
   --text: #e6e9ef;
   --muted: #9aa3b2;
-  --primary: #39b6ff;
+  --primary: #2386c1;
   --primary-600: #2a93cc;
   --card: #0f1628;
   --border: #243046;
@@ -30,16 +48,14 @@
   --accent-soft: rgba(57, 182, 255, 0.12);
 }
 
-* { box-sizing: border-box; }
-
 * { 
   box-sizing: border-box;
 }
 
-/* Smooth theme transitions */
-*,
-*::before,
-*::after {
+/* Smooth theme transitions - only applied after initial theme is set */
+.theme-transitions *,
+.theme-transitions *::before,
+.theme-transitions *::after {
   transition: 
     background-color 0.3s ease,
     border-color 0.3s ease,
@@ -112,11 +128,10 @@ input, select { width: 100%; border: 1px solid var(--border); border-radius: 10p
 .table th { text-align: left; color: var(--muted); font-weight: 600; }
 .table.zebra tbody tr:nth-child(odd) { background: var(--table-zebra); }
 .table tbody tr:hover { background: var(--table-hover); }
-.table .num { text-align: right; }
 .selected { background: var(--table-selected) !important; }
 
 .actions-grid { display: flex; flex-wrap: wrap; gap: 16px; }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: grid; gap: 10px; align-items: start; text-align: left; flex: 1 1 15em;}
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: grid; gap: 10px; align-items: start; text-align: left; flex: 1 1 15em; background: linear-gradient(187deg, rgb(13 28 48) 0%, rgb(255 255 255 / 0%) 35%, rgb(255 255 255 / 0%) 50%, rgb(21 38 63) 100%)}
 .card h2, .card h3 { margin: 0 0 8px 0; font-size: 16px; }
 .muted { color: var(--muted); }
 .cards { display: grid; grid-template-columns: repeat(6,1fr); gap: 14px; }
@@ -188,22 +203,33 @@ input, select { width: 100%; border: 1px solid var(--border); border-radius: 10p
 /* ━━━━━━━━━━━━━━━━━━━━━━ Flexible Utilities ━━━━━━━━━━━━━━━━━━━━━━ */
 .hBox-wrappper { display: flex; flex-wrap: wrap; gap: 16px; }
 .hBox-wrappper div { flex: 1 1 300px; }
+.flexible-card { 
+    display: flex;
+    flex-direction: column;
+    padding: 16px; border: 1px solid var(--border); border-radius: 12px; flex: 1 1 300px;
+    gap: 1.1em; overflow: hidden;}
+.flexible-card * { width: 100%; }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━ Mobile Resize ━━━━━━━━━━━━━━━━━━━━━━━━ */
 @media screen and (max-width: 500px) {
-    .site-header .inner {
-        padding: 8px 24px;
-    }
+    .site-header .inner { padding: 8px 24px; }
     
-    section {
-        padding: 6px !important;
+    section { padding: 6px !important; }
+
+    .container .card { padding: 30px !important; }
+
+    .hBox{ grid-template-columns: 1fr !important; }
+    /* Target the 2nd and 3rd <td> and <th> of every row */
+    table tr td:nth-child(2), 
+    table tr th:nth-child(2),
+    table tr td:nth-child(3), 
+    table tr th:nth-child(3) {
+        display: none;
     }
 
-    .container .card {
-        padding: 30px !important;
-    }
+    .table .num { text-align: right; }
 
-    .hBox{
-        grid-template-columns: 1fr !important;
+    .right-sided-text {
+        text-align: left !important;
     }
 }

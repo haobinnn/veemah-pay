@@ -7,6 +7,7 @@ import logo from "../../assets/img/veemahpay-logo.png";
 import { ThemeToggle } from "@/components/ui/ThemeProvider";
 import { LanguageToggle, useLanguage } from "@/components/ui/LanguageProvider";
 import { useAuth } from "@/components/ui/AuthProvider";
+import { MoneyDisplay } from "@/components/ui/MoneyDisplay";
 
 export function Header(){
   const pathname = usePathname();
@@ -45,7 +46,9 @@ export function Header(){
               <div className="avatar" title={me?.account?.name ?? "User"}>{String(me?.account?.name ?? "U").slice(0,1).toUpperCase()}</div>
               <div className="quick-info">
                 <span>{me?.account?.name}</span>
-                <span className="muted">₱{Number(me?.account?.balance ?? 0).toFixed(2)}</span>
+                <span className="muted">
+                  <MoneyDisplay amount={me?.account?.balance ?? 0} />
+                </span>
               </div>
             </>
           )}

@@ -14,6 +14,7 @@ import {
   Line
 } from 'recharts';
 import { useLanguage } from '@/components/ui/LanguageProvider';
+import { MoneyDisplay } from '@/components/ui/MoneyDisplay';
 
 type Transaction = {
   id: number;
@@ -53,7 +54,7 @@ type MonthPoint = {
 function formatMoney(amount: number) {
   const n = Number(amount);
   if (!Number.isFinite(n)) return '₱0.00';
-  return `₱${n.toFixed(2)}`;
+  return `₱${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function toDateKey(d: Date) {
@@ -267,26 +268,36 @@ export function SpendingGraph({ transactions }: Props) {
       <div style={statRowStyle}>
         <div style={statCardStyle}>
           <div style={statLabelStyle}>{t('graph.last_30_days')} · {t('graph.income')}</div>
-          <div style={statValueStyle}>{formatMoney(analytics.last30Income)}</div>
+          <div style={statValueStyle}>
+            <MoneyDisplay amount={analytics.last30Income} />
+          </div>
         </div>
         <div style={statCardStyle}>
           <div style={statLabelStyle}>{t('graph.last_30_days')} · {t('graph.expense')}</div>
-          <div style={statValueStyle}>{formatMoney(analytics.last30Expense)}</div>
+          <div style={statValueStyle}>
+            <MoneyDisplay amount={analytics.last30Expense} />
+          </div>
         </div>
         <div style={statCardStyle}>
           <div style={statLabelStyle}>{t('graph.last_30_days')} · {t('graph.net')}</div>
-          <div style={statValueStyle}>{formatMoney(analytics.last30Net)}</div>
+          <div style={statValueStyle}>
+            <MoneyDisplay amount={analytics.last30Net} colorize={true} />
+          </div>
         </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
         <div style={statCardStyle}>
           <div style={statLabelStyle}>{t('graph.this_month')} · {t('graph.expense')}</div>
-          <div style={statValueStyle}>{formatMoney(analytics.thisMonthExpense)}</div>
+          <div style={statValueStyle}>
+            <MoneyDisplay amount={analytics.thisMonthExpense} />
+          </div>
         </div>
         <div style={statCardStyle}>
           <div style={statLabelStyle}>{t('graph.last_month')} · {t('graph.expense')}</div>
-          <div style={statValueStyle}>{formatMoney(analytics.lastMonthExpense)}</div>
+          <div style={statValueStyle}>
+            <MoneyDisplay amount={analytics.lastMonthExpense} />
+          </div>
         </div>
         <div style={statCardStyle}>
           <div style={statLabelStyle}>{t('graph.change')}</div>
@@ -325,7 +336,7 @@ export function SpendingGraph({ transactions }: Props) {
               fontSize={11}
               tickLine={false}
               axisLine={false}
-              tickFormatter={(value) => `₱${Number(value).toFixed(0)}`}
+              tickFormatter={(value) => `₱${Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
               dx={-5}
             />
             <Tooltip
@@ -388,7 +399,7 @@ export function SpendingGraph({ transactions }: Props) {
               <BarChart data={analytics.categories} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} opacity={0.3} />
                 <XAxis dataKey="category" stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} interval={0} angle={-15} textAnchor="end" height={50} />
-                <YAxis stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `₱${Number(v).toFixed(0)}`} />
+                <YAxis stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `₱${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: 'rgba(15, 22, 40, 0.85)',
@@ -414,7 +425,7 @@ export function SpendingGraph({ transactions }: Props) {
               <ComposedChart data={analytics.months} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} opacity={0.3} />
                 <XAxis dataKey="monthLabel" stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `₱${Number(v).toFixed(0)}`} />
+                <YAxis stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `₱${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: 'rgba(15, 22, 40, 0.85)',

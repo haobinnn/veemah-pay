@@ -5,16 +5,44 @@ type Theme = "light" | "dark";
 
 export function ThemeProvider({ children }:{ children: React.ReactNode }){
   const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window === "undefined") return "light";
-    const saved = window.localStorage.getItem("theme") as Theme | null;
-    const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-    return saved ?? (prefersDark ? "dark" : "light");
+    if (typeof window === "undefined") return "dark"; // Default to dark on server
+    
+    // Get the theme that was set by the script in layout.tsx
+    const currentTheme = document.documentElement.getAttribute("data-theme") as Theme;
+    if (currentTheme === "light") {
+      return "light";
+    }
+    
+    // Default to dark (matching CSS default)
+    return "dark";
   });
 
-  useLayoutEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  useLayoutEffect(() => {    
+    // Set the theme attribute if needed
+    const currentAttr = document.documentElement.getAttribute("data-theme") as Theme;
+    if (theme === "light" && currentAttr !== "light") {
+      document.documentElement.setAttribute("data-theme", "light");
+    } else if (theme === "dark" && currentAttr === "light") {
+      document.documentElement.removeAttribute("data-theme");
+    }
+    
+    // Save to localStorage
     window.localStorage.setItem("theme", theme);
-  }, [theme]);
+
+    if (isInitialLoad) {
+      // Add transitions class after initial theme is set
+      const timer = setTimeout(() => {
+        document.documentElement.classList.add("theme-transitions");
+        setIsInitialLoad(false);
+      }, 100);
+      return () => clearTimeout(timer);
+    } else {
+      // Ensure transitions are enabled for manual theme changes
+      document.documentElement.classList.add("theme-transitions");
+    }
+  }, [theme, isInitialLoad]);
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme }}>
