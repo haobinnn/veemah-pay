@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VeemahPay Java Demo</title>
+    <style>
+      :root { color-scheme: light; }
+      body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background: #f6f7fb; color: #0b1320; }
+      .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px; }
+      .top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+      h1 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: .2px; }
+      .muted { color: #5b667a; font-size: 13px; }
+      .grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 14px; }
+      @media (min-width: 880px) { .grid { grid-template-columns: 1fr 1fr; } }
+      .card { background: #fff; border: 1px solid #e5e8ef; border-radius: 14px; padding: 14px; }
+      .card h2 { margin: 0 0 10px; font-size: 14px; font-weight: 800; }
+      label { display: block; font-size: 12px; color: #5b667a; margin: 10px 0 6px; }
+      input, select, button { width: 100%; padding: 10px 10px; border-radius: 10px; border: 1px solid #d9deea; font-size: 14px; box-sizing: border-box; }
+      input:focus, select:focus { outline: 2px solid rgba(10, 107, 255, .25); border-color: #0a6bff; }
+      button { background: #0a6bff; color: #fff; border: 0; font-weight: 700; cursor: pointer; margin-top: 12px; }
+      button:disabled { opacity: .6; cursor: not-allowed; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .out { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; background: #0b1320; color: #d7e1ff; padding: 10px; border-radius: 12px; overflow: auto; white-space: pre-wrap; }
+      .pill { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius: 999px; border:1px solid #d9deea; background:#fff; font-size:12px; }
+      .ok { color: #167a2e; font-weight: 800; }
+      .bad { color: #b00020; font-weight: 800; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <div>
+          <h1>VeemahPay — Java Backend Demo</h1>
+          <div class="muted">This page is served by Spring Boot (no Next.js / TypeScript UI).</div>
+        </div>
+        <div class="pill"><span>Backend</span><span id="backendStatus" class="muted">checking…</span></div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <h2>Account Lookup</h2>
+          <label for="lookupAccount">Account Number</label>
+          <input id="lookupAccount" inputmode="numeric" autocomplete="off" placeholder="e.g. 12345" />
+          <button id="lookupBtn">Fetch account</button>
+          <div style="margin-top: 12px;">
+            <div class="muted">Result</div>
+            <div id="lookupOut" class="out"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Transfer / Deposit / Withdraw</h2>
+          <div class="row">
+            <div>
+              <label for="txType">Type</label>
+              <select id="txType">
+                <option value="transfer" selected>transfer</option>
+                <option value="deposit">deposit</option>
+                <option value="withdraw">withdraw</option>
+              </select>
+            </div>
+            <div>
+              <label for="txAmount">Amount</label>
+              <input id="txAmount" inputmode="decimal" autocomplete="off" placeholder="e.g. 250" />
+            </div>
+          </div>
+
+          <label for="txSource">Source Account</label>
+          <input id="txSource" inputmode="numeric" autocomplete="off" placeholder="e.g. 12345" />
+
+          <label for="txPin">PIN (required for withdraw/transfer)</label>
+          <input id="txPin" inputmode="numeric" autocomplete="off" placeholder="5 digits" />
+
+          <label for="txTarget">Target Account (transfer only)</label>
+          <input id="txTarget" inputmode="numeric" autocomplete="off" placeholder="e.g. 54321" />
+          <button id="verifyTargetBtn" type="button">Verify target (masked name)</button>
+
+          <button id="txBtn">Submit transaction</button>
+          <div style="margin-top: 12px;">
+            <div class="muted">Result</div>
+            <div id="txOut" class="out"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const backendStatus = $('backendStatus');
+
+      const setOut = (el, v) => { el.textContent = typeof v === 'string' ? v : JSON.stringify(v, null, 2); };
+      const asNum = (v) => {
+        const n = Number(String(v || '').trim());
+        return Number.isFinite(n) ? n : NaN;
+      };
+
+      async function pingBackend() {
+        try {
+          const res = await fetch('/api/accounts/0000', { method: 'GET' });
+          backendStatus.textContent = res.ok ? 'online' : 'online (limited)';
+          backendStatus.className = res.ok ? 'ok' : 'muted';
+        } catch {
+          backendStatus.textContent = 'offline';
+          backendStatus.className = 'bad';
+        }
+      }
+
+      $('lookupBtn').addEventListener('click', async () => {
+        const account = String($('lookupAccount').value || '').trim();
+        if (!account) return setOut($('lookupOut'), { error: 'account_number required' });
+        try {
+          const res = await fetch(`/api/accounts/${encodeURIComponent(account)}`, { method: 'GET' });
+          const data = await res.json().catch(() => null);
+          setOut($('lookupOut'), res.ok ? data : (data || { error: 'request failed', status: res.status }));
+        } catch (e) {
+          setOut($('lookupOut'), { error: String(e && e.message ? e.message : e) });
+        }
+      });
+
+      $('verifyTargetBtn').addEventListener('click', async () => {
+        const target = String($('txTarget').value || '').trim();
+        if (!target) return setOut($('txOut'), { error: 'target_account required' });
+        try {
+          const res = await fetch(`/api/accounts/${encodeURIComponent(target)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+          const data = await res.json().catch(() => null);
+          setOut($('txOut'), res.ok ? data : (data || { error: 'request failed', status: res.status }));
+        } catch (e) {
+          setOut($('txOut'), { error: String(e && e.message ? e.message : e) });
+        }
+      });
+
+      $('txType').addEventListener('change', () => {
+        const t = $('txType').value;
+        $('txTarget').disabled = t !== 'transfer';
+        $('verifyTargetBtn').disabled = t !== 'transfer';
+      });
+      $('txType').dispatchEvent(new Event('change'));
+
+      $('txBtn').addEventListener('click', async () => {
+        const type = $('txType').value;
+        const amount = asNum($('txAmount').value);
+        const source = String($('txSource').value || '').trim();
+        const target = String($('txTarget').value || '').trim();
+        const pin = String($('txPin').value || '').trim();
+
+        if (!source) return setOut($('txOut'), { error: 'source_account required' });
+        if (!Number.isFinite(amount) || amount <= 0) return setOut($('txOut'), { error: 'amount must be positive' });
+        if ((type === 'withdraw' || type === 'transfer') && !pin) return setOut($('txOut'), { error: 'pin required' });
+        if (type === 'transfer' && !target) return setOut($('txOut'), { error: 'target_account required' });
+
+        const payload = { type, source_account: source, target_account: type === 'transfer' ? target : null, amount, pin: pin || null };
+        try {
+          const res = await fetch('/api/transactions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          const data = await res.json().catch(() => null);
+          setOut($('txOut'), res.ok ? data : (data || { error: 'request failed', status: res.status }));
+        } catch (e) {
+          setOut($('txOut'), { error: String(e && e.message ? e.message : e) });
+        }
+      });
+
+      pingBackend();
+    </script>
+  </body>
+</html>
+

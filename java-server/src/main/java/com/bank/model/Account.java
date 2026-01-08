@@ -20,7 +20,7 @@ public class Account {
     @Column(name = "balance")
     private BigDecimal balance;
 
-    @Column(name = "pin", length = 4)
+    @Column(name = "pin", length = 5)
     private String pin;
 
     @Column(name = "status", length = 10)

@@ -1,4 +1,4 @@
-package com.bembank.domain;
+package com.veemahpay.domain;
 
 import java.math.BigDecimal;
 import java.util.Objects;
