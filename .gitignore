@@ -31,3 +31,7 @@ java-server/target/
 # Misc
 .pnpm-store/
 tsconfig.tsbuildinfo
+
+# Java files
+*.class
+*.jar

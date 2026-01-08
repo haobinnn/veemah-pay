@@ -17,6 +17,12 @@ cd e_java_server
 ngrok http --domain=sasha-nonreliable-thunderingly.ngrok-free.dev 8080
 ```
 
+### 3. Start dev Environment
+
+```bash
+npm run dev
+```
+
 ## 📡 API Endpoints
 
 ### Base URL

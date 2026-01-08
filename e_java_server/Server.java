@@ -10,7 +10,7 @@ import java.util.concurrent.Executors;
 
 public class Server {
     private static final int PORT = 8081; // Changed from 8080 to avoid conflict
-    private static final String DATABASE_URL = "postgresql://neondb_owner:npg_nrs02GPJjDlu@ep-calm-boat-a1stz2a7-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
+    private static String DATABASE_URL;
     
     private static Connection dbConnection;
     
@@ -20,14 +20,19 @@ public class Server {
         
         // Create HTTP server
         HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", PORT), 0);
-        
-        System.out.println("================================================");
-        System.out.println("VeemahPay Transaction Server STARTED");
-        System.out.println("Listening on Port: " + PORT);
-        System.out.println("Database: Connected to Neon PostgreSQL");
-        System.out.println("Test locally: http://localhost:" + PORT + "/api/transactions");
-        System.out.println("Tunnel: sasha-nonreliable-thunderingly.ngrok-free.dev");
-        System.out.println("================================================");
+
+        C.println("================================================", C.N.BLUE);
+        C.println("VeemahPay Transaction Server STARTED", C.N.GREEN);
+        C.println("Listening on Port: " + PORT, C.N.YELLOW);
+        C.println("Database: Connected to Neon PostgreSQL", C.N.GREEN);
+        C.println("Test locally: http://localhost:" + PORT + "/api/transactions", C.N.YELLOW);
+        String tunnelDomain = System.getenv("JAVA_TRANSACTION_API");
+        if (tunnelDomain != null) {
+            C.println("Tunnel: " + tunnelDomain, C.N.YELLOW);
+        } else {
+            C.println("Tunnel: Set JAVA_TRANSACTION_API environment variable for tunnel access", C.N.RED);
+        }
+        C.println("================================================", C.N.BLUE);
 
         // Register API endpoints
         server.createContext("/api/transactions", new TransactionHandler());
@@ -42,24 +47,50 @@ public class Server {
         try {
             // Load PostgreSQL driver
             Class.forName("org.postgresql.Driver");
+
+            C.println("PostgreSQL driver loaded", C.N.GREEN);
+
+            // Get database URL from environment variable
+            String databaseUrl = System.getenv("DATABASE_URL");
+            if (databaseUrl == null) {
+                throw new RuntimeException(" DATABASE_URL environment variable not set");
+            }
+
+            // Parse DATABASE_URL to extract connection details securely
+            String cleanUrl = databaseUrl.replace("postgresql://", "");
+            String[] parts = cleanUrl.split("@");
+            if (parts.length != 2) {
+                throw new RuntimeException("Invalid DATABASE_URL format");
+            }
             
-            System.out.println("✓ PostgreSQL driver loaded");
+            String[] credentials = parts[0].split(":");
+            if (credentials.length != 2) {
+                throw new RuntimeException("Invalid DATABASE_URL credentials format");
+            }
             
-            // Create connection with proper connection string
+            String username = credentials[0];
+            String password = credentials[1];
+            String[] hostDb = parts[1].split("/");
+            String host = hostDb[0];
+            String database = hostDb[1].split("\\?")[0];
+            
+            String jdbcUrl = "jdbc:postgresql://" + host + "/" + database;
+            
             Properties props = new Properties();
-            props.setProperty("user", "neondb_owner");
-            props.setProperty("password", "npg_nrs02GPJjDlu");
+            props.setProperty("user", username);
+            props.setProperty("password", password);
             props.setProperty("ssl", "true");
             props.setProperty("sslmode", "require");
-            
-            String url = "jdbc:postgresql://ep-calm-boat-a1stz2a7-pooler.ap-southeast-1.aws.neon.tech/neondb";
-            dbConnection = DriverManager.getConnection(url, props);
+
+            dbConnection = DriverManager.getConnection(jdbcUrl, props);
             
             // Test connection
             try (Statement stmt = dbConnection.createStatement()) {
                 ResultSet rs = stmt.executeQuery("SELECT 1");
                 if (rs.next()) {
-                    System.out.println("✓ Database connection successful");
+                    C.println("Database connection successful", C.N.GREEN);
+                } else {
+                    C.println("Database connection failed", C.N.RED);
                 }
             }
             
