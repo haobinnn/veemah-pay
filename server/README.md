@@ -7,7 +7,7 @@ A modular Java HTTP server that provides CRUD operations for VeemahPay transacti
 ### 1. Start the Server
 
 ```bash
-cd e_java_server
+cd server
 ./run-server.sh
 ```
 

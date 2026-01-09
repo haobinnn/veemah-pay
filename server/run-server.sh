@@ -52,7 +52,7 @@ white  "         VeemahPay Transaction Server"
 yellow "================================================"
 
 # Set paths
-SERVER_DIR="/media/deadbush225/LocalDisk/System/Coding/For School/veemah-pay/e_java_server"
+SERVER_DIR="/media/deadbush225/LocalDisk/System/Coding/For School/veemah-pay/server"
 POSTGRES_JAR_URL="https://jdbc.postgresql.org/download/postgresql-42.7.4.jar"
 POSTGRES_JAR="postgresql-42.7.4.jar"
 
