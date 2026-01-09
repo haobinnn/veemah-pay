@@ -18,7 +18,7 @@ type Me = {
 
 type AuthContextType = {
   me: Me | null;
-  setMe: (me: Me) => void;
+  setMe: React.Dispatch<React.SetStateAction<Me | null>>;
   logout: () => Promise<void>;
   refreshMe: () => Promise<void>;
 };

@@ -148,7 +148,7 @@ export function Header(){
           </Link>
         </div>
         <nav className={`top-nav ${open ? "open" : ""}`}>
-          <NavLink href="/" label={t('nav.home')} />
+          {!me?.authenticated && <NavLink href="/" label={t('nav.home')} />}
           {!me?.authenticated && (
             <>
               <NavLink href="/login" label={t('nav.login')} />
@@ -201,6 +201,7 @@ export function Header(){
             <h2 style={{ margin: 0 }}>{t("inbox.title")}</h2>
             <div className="notif-modal-actions">
               <button className="btn ghost" onClick={fetchNotifications} disabled={notifLoading}>{t("admin.refresh")}</button>
+              <Link href="/notifications" className="btn ghost" onClick={() => setInboxOpen(false)}>{t("inbox.view_all")}</Link>
               <button className="btn" onClick={markAllRead} disabled={notifLoading || unreadCount === 0}>{t("inbox.mark_all_read")}</button>
             </div>
           </div>

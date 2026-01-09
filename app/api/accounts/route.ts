@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
     const search = (url.searchParams.get('q') || url.searchParams.get('search') || '').trim();
+    const statusFilter = (url.searchParams.get('status') || '').trim();
     const includeArchived = ['1','true','yes'].includes((url.searchParams.get('include_archived') || '').toLowerCase());
 
     const colRes = await pool.query(
@@ -40,9 +41,15 @@ export async function GET(req: NextRequest) {
     const where: string[] = [];
     const params: any[] = [];
     let idx = 1;
-    if (!includeArchived) {
+    
+    if (statusFilter) {
+      where.push(`status = $${idx}`);
+      params.push(statusFilter);
+      idx++;
+    } else if (!includeArchived) {
       where.push(`status <> 'Archived'`);
     }
+
     if (search) {
       where.push(`(account_number LIKE $${idx} OR name ILIKE $${idx})`);
       params.push(`%${search}%`);

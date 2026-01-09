@@ -8,6 +8,7 @@ type Account = { account_number: string; name: string; balance: number; status: 
 type Transaction = { id: number; type: string; status: string; amount: number; target_account?: string | null; note?: string | null };
 
 import { useLanguage } from '@/components/ui/LanguageProvider';
+import { fetchTransactions as fetchTransactionsJava, createTransaction } from '@/lib/java-api';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -47,9 +48,13 @@ export default function AdminPage() {
   };
 
   const fetchTransactions = async (acc: string) => {
-    const res = await fetch(`/api/transactions?account=${encodeURIComponent(acc)}&limit=50`);
-    const data = await res.json();
-    setTransactions(data.transactions || []);
+    try {
+      const data = await fetchTransactionsJava({ account: acc, limit: 50 });
+      setTransactions(data.transactions || []);
+    } catch (e: any) {
+      console.error('Failed to fetch transactions:', e);
+      setTransactions([]);
+    }
   };
 
   useEffect(() => { fetchMe(); }, []);
@@ -94,18 +99,28 @@ export default function AdminPage() {
     setPending(true);
     setError(null);
     try {
-      const res = await fetch("/api/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, source_account: selected.account_number, amount: amt })
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || "Operation failed"); }
+      const transactionData = {
+        type: type,
+        source_account: selected.account_number,
+        amount: amt,
+        note: `Admin ${type} operation`
+      };
+
+      const result = await createTransaction(transactionData);
+      if (!result.success) {
+        setError(result.message || "Operation failed");
+        return;
+      }
+      
       await fetchAccounts();
       await fetchTransactions(selected.account_number);
       setDepAmount("");
       setWdAmount("");
-    } finally { setPending(false); }
+    } catch (e: any) {
+      setError(e.message || "Operation failed");
+    } finally { 
+      setPending(false); 
+    }
   };
 
   const completeTx = async (id: number) => {
@@ -142,6 +157,7 @@ export default function AdminPage() {
             <input placeholder={t('admin.search_placeholder')} value={search} onChange={e => setSearch(e.target.value)} />
             <button className="btn" onClick={fetchAccounts}>{t('admin.search')}</button>
             <button className="btn" onClick={fetchAccounts}>{t('admin.refresh')}</button>
+            <button className="btn" onClick={() => router.push('/admin/archived')}>Archived Accounts</button>
           </div>
           <div style={{ overflowX: "auto" }}>
             <table className="table zebra">
@@ -159,7 +175,7 @@ export default function AdminPage() {
                   <tr key={a.account_number} className={selected?.account_number === a.account_number ? "selected" : ""} onClick={() => setSelected(a)}>
                     <td>{a.account_number}</td>
                     <td>{a.name}</td>
-                    {hasRole && <td>{typeof a.role === "string" ? a.role : ""}</td>}
+                    {hasRole && <td>{typeof a.role === "string" ? a.role.charAt(0).toUpperCase() + a.role.slice(1) : ""}</td>}
                     <td>{a.status}</td>
                     <td className="num">₱{Number(a.balance).toFixed(2)}</td>
                   </tr>
@@ -176,7 +192,6 @@ export default function AdminPage() {
                   <select value={editRole} onChange={e => setEditRole(e.target.value)}>
                     <option value="user">{t('admin.role_user')}</option>
                     <option value="admin">{t('admin.role_admin')}</option>
-                    <option value="super_admin">{t('admin.role_super_admin')}</option>
                   </select>
                 )}
                 <select value={editStatus} onChange={e => setEditStatus(e.target.value as Account["status"]) }>

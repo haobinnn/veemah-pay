@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { fetchTransactions as fetchTransactionsJava, createTransaction, updateTransaction, cancelTransaction } from '@/lib/java-api';
 
 type Account = {
   account_number: string;
@@ -175,25 +176,31 @@ export default function Landing98() {
 
     try {
       setPending(true);
-      let res = await fetch(`/api/transactions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: op, source_account: target.account_number, amount: amt }),
-      });
-      let data: any = await res.json().catch(() => ({}));
-      // Fallback to legacy accounts PATCH if transactions API is unavailable (e.g., migrations not applied)
-      if (!res.ok && (res.status >= 500 || String(data?.error || "").toLowerCase().includes("transaction"))) {
-        res = await fetch(`/api/accounts/${target.account_number}`, {
+      
+      const transactionData = {
+        type: op as 'deposit' | 'withdraw',
+        source_account: target.account_number,
+        amount: amt,
+        note: `Admin ${op} operation`
+      };
+
+      const result = await createTransaction(transactionData);
+      
+      if (!result.success) {
+        // Fallback to legacy accounts PATCH if Java server is unavailable
+        const res = await fetch(`/api/accounts/${target.account_number}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ op, amount: amt }),
         });
-        data = await res.json().catch(() => ({}));
+        const data = await res.json().catch(() => ({}));
+        
+        if (!res.ok) {
+          setError(data?.error ?? "Operation failed");
+          return;
+        }
       }
-      if (!res.ok) {
-        setError(data?.error ?? "Operation failed");
-        return;
-      }
+      
       setError(null);
       setAmount("");
       setSelected(null);
@@ -230,17 +237,19 @@ export default function Landing98() {
     }
     try {
       setPending(true);
-      let res = await fetch(`/api/transactions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "transfer", source_account: source.account_number, target_account: tgt, amount: amt }),
-      });
-      let data: any = await res.json().catch(() => ({}));
+      
+      const transactionData = {
+        type: 'transfer' as const,
+        source_account: source.account_number,
+        target_account: tgt,
+        amount: amt,
+        note: `Transfer to ${tgt}`
+      };
 
-      // Fallback: if transactions ledger is unavailable (e.g., migrations not applied),
-      // perform a non-ledger, immediate transfer via accounts PATCH withdraw+deposit.
-      if (!res.ok && (res.status >= 500 || String(data?.error || "").toLowerCase().includes("transaction"))) {
-        // Withdraw from source
+      const result = await createTransaction(transactionData);
+      
+      if (!result.success) {
+        // Fallback: if Java server is unavailable, perform manual withdraw+deposit
         let w = await fetch(`/api/accounts/${source.account_number}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -270,14 +279,11 @@ export default function Landing98() {
           setPending(false);
           return;
         }
-        // Fallback succeeded
-        data = { ok: true };
+        // Fallback succeeded - transfer completed manually
+      } else {
+        // Java server succeeded
       }
 
-      if (!res.ok && !data?.ok) {
-        setError(data?.error ?? "Transfer failed");
-        return;
-      }
       setError(null);
       setAmount("");
       setTransferTarget("");
@@ -320,24 +326,20 @@ export default function Landing98() {
         setTxLoading(false);
         return;
       }
-      const qs = new URLSearchParams();
-      qs.set("account", ctx.account_number);
-      if (txType !== "all") qs.set("type", txType);
-      if (txStatus !== "all") qs.set("status", txStatus);
-      if (txQuery.trim()) qs.set("q", txQuery.trim());
-      const res = await fetch(`/api/transactions${qs.toString() ? `?${qs.toString()}` : ''}`);
-      const data = await res.json();
-      if (!res.ok) {
-        setTxError(data.error ?? "Failed to load transactions");
-        setTransactions([]);
-      } else {
-        setTransactions(data.transactions ?? []);
-        const notes: Record<number, string> = {};
-        (data.transactions ?? []).forEach((t: Transaction) => { notes[t.id] = t.note ?? ""; });
-        setTxNotes(notes);
-      }
+      
+      const params: any = { account: ctx.account_number };
+      if (txType !== "all") params.type = txType;
+      if (txStatus !== "all") params.status = txStatus;
+      // Note: txQuery not yet supported in Java API
+      
+      const data = await fetchTransactionsJava(params);
+      setTransactions(data.transactions as any ?? []);
+      const notes: Record<number, string> = {};
+      (data.transactions ?? []).forEach((t: any) => { notes[t.id] = t.note ?? ""; });
+      setTxNotes(notes);
     } catch (e: any) {
       setTxError(e?.message ?? "Failed to load transactions");
+      setTransactions([]);
     } finally {
       setTxLoading(false);
     }

@@ -16,16 +16,46 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
+  const getClientLocation = async () => {
+    if (typeof window === "undefined") return null;
+    if (!("geolocation" in navigator)) return null;
+    return await new Promise<{ lat: number; lon: number; accuracy?: number } | null>((resolve) => {
+      let done = false;
+      const finish = (v: { lat: number; lon: number; accuracy?: number } | null) => {
+        if (done) return;
+        done = true;
+        resolve(v);
+      };
+      const timeout = window.setTimeout(() => finish(null), 900);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          window.clearTimeout(timeout);
+          const lat = Number(pos.coords.latitude);
+          const lon = Number(pos.coords.longitude);
+          const accuracy = Number(pos.coords.accuracy);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) return finish(null);
+          finish({ lat, lon, accuracy: Number.isFinite(accuracy) ? accuracy : undefined });
+        },
+        () => {
+          window.clearTimeout(timeout);
+          finish(null);
+        },
+        { enableHighAccuracy: false, maximumAge: 60_000, timeout: 800 }
+      );
+    });
+  };
+
   const submit = async () => {
     if (pending) return;
     setError(null);
     setPending(true);
     try {
+      const client_location = await getClientLocation();
       // Send as 'password' - API handles fallback to PIN if needed
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, client_location }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -117,11 +147,11 @@ export default function LoginPage() {
                 </button>
                 
                 <div style={{ textAlign: 'center', marginTop: 16 }}>
-                  <Link href="/forgot-password" style={{ color: 'var(--primary)', fontSize: '14px', fontWeight: 500 }}>Forgot your password?</Link>
+                  <Link href="/forgot-password" style={{ color: 'var(--primary)', fontSize: '14px', fontWeight: 500 }}>{t('login.forgot_your_password')}</Link>
                 </div>
 
                 <div style={{ textAlign: 'center', marginTop: 8, color: 'var(--muted)', fontSize: '14px' }}>
-                  Don't have an account? <Link href="/signup" style={{ color: 'var(--primary)', fontWeight: 600 }}>Sign up</Link>
+                  {t('login.dont_have_account')} <Link href="/signup" style={{ color: 'var(--primary)', fontWeight: 600 }}>{t('login.sign_up_link')}</Link>
                 </div>
               </div>
             </div>

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 
+const JAVA_BACKEND_URL = process.env.JAVA_BACKEND_URL || 'http://localhost:8080';
+
 function maskAccountName(raw: string) {
   const cleaned = String(raw ?? '').trim().replace(/\s+/g, ' ');
   if (!cleaned) return '';
@@ -75,12 +77,31 @@ export async function POST(req: NextRequest, { params }: { params: { account_num
   await req.json().catch(() => ({}));
 
   try {
-    const result = await pool.query(`SELECT name FROM accounts WHERE account_number = $1`, [account_number]);
-    if ((result.rowCount ?? 0) === 0) return NextResponse.json({ exists: false }, { status: 404 });
+    const upstream = await fetch(`${JAVA_BACKEND_URL}/api/accounts/${encodeURIComponent(account_number)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (upstream.ok) {
+      const data = await upstream.json().catch(() => null);
+      return NextResponse.json(data);
+    }
+    console.warn(`[POST /api/accounts] Java server returned ${upstream.status}, falling back to local DB.`);
+  } catch (err: any) {
+    console.warn('[POST /api/accounts] Java server unreachable, falling back to local DB:', err);
+  }
 
-    const actualName = String(result.rows[0]?.name ?? '');
-    const maskedName = maskAccountName(actualName);
-    return NextResponse.json({ exists: true, maskedName });
+  // Local DB fallback
+  try {
+    const res = await pool.query('SELECT name FROM accounts WHERE account_number = $1', [account_number]);
+    if (res.rowCount === 0) {
+      return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+    }
+    const row = res.rows[0];
+    return NextResponse.json({
+      exists: true,
+      maskedName: maskAccountName(row.name),
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? 'Server error' }, { status: 500 });
   }
@@ -167,29 +188,53 @@ export async function PATCH(req: NextRequest, { params }: { params: { account_nu
   }
 
   try {
-    const current = await pool.query('SELECT status, balance::float AS balance FROM accounts WHERE account_number = $1', [account_number]);
-    if (current.rowCount === 0) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
-    const { status: currStatus, balance } = current.rows[0];
-    if (currStatus === 'Locked' || currStatus === 'Archived') return NextResponse.json({ error: 'Account unavailable' }, { status: 403 });
-
-    if (op === 'deposit') {
-      if (amount < 100) return NextResponse.json({ error: 'Deposit minimum is 100.' }, { status: 400 });
-      const res = await pool.query(
-        'UPDATE accounts SET balance = balance + $1 WHERE account_number = $2 RETURNING account_number, name, balance::float AS balance, status',
-        [amount, account_number]
-      );
-      return NextResponse.json({ account: res.rows[0] });
-    } else {
-      if (amount < 100) return NextResponse.json({ error: 'Withdrawal minimum is 100.' }, { status: 400 });
-      if (amount > balance) return NextResponse.json({ error: 'Insufficient funds.' }, { status: 400 });
-      const res = await pool.query(
-        'UPDATE accounts SET balance = balance - $1 WHERE account_number = $2 RETURNING account_number, name, balance::float AS balance, status',
-        [amount, account_number]
-      );
-      return NextResponse.json({ account: res.rows[0] });
+    const upstream = await fetch(`${JAVA_BACKEND_URL}/api/accounts/${encodeURIComponent(account_number)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ op, amount }),
+    });
+    if (upstream.ok) {
+      const data = await upstream.json().catch(() => null);
+      return NextResponse.json({ account: data });
     }
+    console.warn(`[PATCH /api/accounts] Java server returned ${upstream.status}, falling back to local DB.`);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? 'Server error' }, { status: 500 });
+    console.warn('[PATCH /api/accounts] Java server unreachable, falling back to local DB:', err);
+  }
+
+  const session = req.cookies.get('session')?.value;
+  if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const isAdmin = await isAdminSession(session);
+  if (!isAdmin && session !== account_number) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const res = await client.query('SELECT balance FROM accounts WHERE account_number = $1 FOR UPDATE', [account_number]);
+    if (res.rowCount === 0) throw new Error('Account not found');
+    const currentBalance = parseFloat(res.rows[0].balance);
+    
+    let newBalance = currentBalance;
+    if (op === 'deposit') {
+        newBalance += amount;
+    } else {
+        if (currentBalance < amount) throw new Error('Insufficient funds');
+        newBalance -= amount;
+    }
+    
+    const updateRes = await client.query(
+        'UPDATE accounts SET balance = $1 WHERE account_number = $2 RETURNING account_number, name, balance::float AS balance, status',
+        [newBalance, account_number]
+    );
+    await client.query('COMMIT');
+    return NextResponse.json({ account: updateRes.rows[0] });
+  } catch (e: any) {
+    await client.query('ROLLBACK');
+    return NextResponse.json({ error: e.message ?? 'Server error' }, { status: 500 });
+  } finally {
+    client.release();
   }
 }
 

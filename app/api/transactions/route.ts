@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 
+const JAVA_BACKEND_URL = process.env.JAVA_BACKEND_URL || 'http://localhost:8080';
+
 type TxType = 'deposit'|'withdraw'|'transfer';
 
 async function isAdminSession(session: string) {
@@ -725,11 +727,16 @@ export async function GET(req: NextRequest) {
 }
 
   export async function POST(req: NextRequest) {
-    let client;
+    const session = req.cookies.get('session')?.value;
+    if (!session) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    let client: any;
+
     try {
       const body = await req.json();
       const { type, source_account, target_account, amount, note, pending, pin } = body;
-    const session = req.cookies.get('session')?.value;
     const t: TxType = type;
     const amt = Number(amount);
 
@@ -742,22 +749,42 @@ export async function GET(req: NextRequest) {
     if (!source_account || (t === 'transfer' && !target_account)) {
       return NextResponse.json({ error: 'Missing account(s)' }, { status: 400 });
     }
-    if ((t === 'withdraw' || t === 'transfer') && !pin) {
-        return NextResponse.json({ error: 'PIN is required for this transaction.' }, { status: 400 });
-    }
 
     // Authorization: customers can only act on their own source account; admin can act on any.
-    if (!session) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
     const isAdmin = await isAdminSession(session);
     if (!isAdmin && session !== source_account) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    if ((t === 'withdraw' || t === 'transfer') && !isAdmin && !pin) {
+        return NextResponse.json({ error: 'PIN is required for this transaction.' }, { status: 400 });
+    }
+
+    try {
+      const upstream = await fetch(`${JAVA_BACKEND_URL}/api/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: t,
+          source_account,
+          target_account,
+          amount: amt,
+          note,
+          pending,
+          pin,
+        }),
+      });
+      if (upstream.ok) {
+        const data = await upstream.json().catch(() => null);
+        return NextResponse.json(data ?? { ok: true });
+      }
+      console.warn(`[POST /api/transactions] Java server returned ${upstream.status}, falling back to local DB.`);
+    } catch (e) {
+      console.warn('[POST /api/transactions] Java server unreachable, falling back to local DB:', e);
+    }
+
     client = await pool.connect();
     await client.query('BEGIN');
-    await client.query(`SET LOCAL lock_timeout = '3s'`);
 
     // 1. Acquire locks in deterministic order to prevent deadlocks and race conditions
     const accountsToLock = [source_account];
@@ -967,49 +994,61 @@ export async function GET(req: NextRequest) {
           const sender = contacts[source_account];
           const recipient = target_account ? contacts[target_account] : undefined;
 
-          if (sender?.email) {
-            const built = buildReceiptEmail({
-              ...base,
-              title: 'Transfer Receipt',
-              subtitle: 'Your transfer has been completed.',
-            });
-            await sendResendEmail({
-              to: sender.email,
-              subject: `VeemahPay Receipt ${built.receiptNo} · Transfer Completed`,
-              html: built.html,
-              text: built.text,
-            });
+          const senderEmail = sender?.email;
+          if (typeof senderEmail === 'string') {
+            const to = senderEmail;
+            if (to) {
+              const built = buildReceiptEmail({
+                ...base,
+                title: 'Transfer Receipt',
+                subtitle: 'Your transfer has been completed.',
+              });
+              await sendResendEmail({
+                to: String(to),
+                subject: `VeemahPay Receipt ${built.receiptNo} · Transfer Completed`,
+                html: built.html,
+                text: built.text,
+              });
+            }
           }
 
-          if (recipient?.email) {
-            const built = buildReceiptEmail({
-              ...base,
-              title: 'Transfer Received',
-              subtitle: 'You received a transfer.',
-            });
-            await sendResendEmail({
-              to: recipient.email,
-              subject: `VeemahPay Receipt ${built.receiptNo} · Transfer Received`,
-              html: built.html,
-              text: built.text,
-            });
+          const recipientEmail = recipient?.email;
+          if (typeof recipientEmail === 'string') {
+            const to = recipientEmail;
+            if (to) {
+              const built = buildReceiptEmail({
+                ...base,
+                title: 'Transfer Received',
+                subtitle: 'You received a transfer.',
+              });
+              await sendResendEmail({
+                to: String(to),
+                subject: `VeemahPay Receipt ${built.receiptNo} · Transfer Received`,
+                html: built.html,
+                text: built.text,
+              });
+            }
           }
         } else {
           const owner = contacts[source_account];
-          if (owner?.email) {
-            const prettyType = String(tx.type).toLowerCase() === 'deposit' ? 'Deposit' : 'Withdrawal';
-            const built = buildReceiptEmail({
-              ...base,
-              title: `${prettyType} Receipt`,
-              subtitle: `Your ${prettyType.toLowerCase()} has been completed.`,
-              toAccount: null,
-            });
-            await sendResendEmail({
-              to: owner.email,
-              subject: `VeemahPay Receipt ${built.receiptNo} · ${prettyType} Completed`,
-              html: built.html,
-              text: built.text,
-            });
+          const ownerEmail = owner?.email;
+          if (typeof ownerEmail === 'string') {
+            const to = ownerEmail;
+            if (to) {
+              const prettyType = String(tx.type).toLowerCase() === 'deposit' ? 'Deposit' : 'Withdrawal';
+              const built = buildReceiptEmail({
+                ...base,
+                title: `${prettyType} Receipt`,
+                subtitle: `Your ${prettyType.toLowerCase()} has been completed.`,
+                toAccount: null,
+              });
+              await sendResendEmail({
+                to: String(to),
+                subject: `VeemahPay Receipt ${built.receiptNo} · ${prettyType} Completed`,
+                html: built.html,
+                text: built.text,
+              });
+            }
           }
         }
       }

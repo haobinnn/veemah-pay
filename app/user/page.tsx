@@ -4,8 +4,11 @@ import { useRouter } from "next/navigation";
 import { Header } from '@/components/nav/Header';
 import { SpendingGraph } from '@/components/dashboard/SpendingGraph';
 import { useLanguage } from '@/components/ui/LanguageProvider';
+import { useAuth } from '@/components/ui/AuthProvider';
 import { QRModal } from '@/components/ui/QRModal';
 import { MoneyDisplay, PositiveMoney } from '@/components/ui/MoneyDisplay';
+import { useToast } from "@/components/ui/Toast";
+import { fetchTransactions as fetchTransactionsJava, createTransaction, config } from '@/lib/java-api';
 
 type Account = { account_number: string; name: string; balance: number; status: string };
 type Transaction = { id: number; type: string; status: string; amount: number; account_number?: string; target_account?: string | null; note?: string | null; created_at?: string };
@@ -14,7 +17,9 @@ type Transaction = { id: number; type: string; status: string; amount: number; a
 export default function UserPage() {
   const router = useRouter();
   const { t } = useLanguage();
-  const [me, setMe] = useState<Account | null>(null);
+  const { me: authMe, setMe: setAuthMe } = useAuth();
+  const me = authMe?.account ? (authMe.account as unknown as Account) : null;
+  const toast = useToast();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [depAmount, setDepAmount] = useState("");
@@ -60,35 +65,34 @@ export default function UserPage() {
     };
   }, [t]);
 
-  const fetchMe = useCallback(async () => {
+  const fetchMe = useCallback(async (): Promise<Account | null> => {
     try {
       const res = await fetch("/api/me");
       const data: any = await readJson(res);
       if (!res.ok) {
         setError(data?.error || t('user.operation_failed'));
-        return;
+        return null;
       }
       if (data?.authenticated) {
-        if (!!data?.isAdmin) { router.replace("/admin"); return; }
-        setMe(data.account);
-        return;
+        if (!!data?.isAdmin) { router.replace("/admin"); return null; }
+        setAuthMe(data);
+        return data.account as Account;
       }
       router.replace("/login");
+      return null;
     } catch (e: any) {
       setError(e?.message || t('user.operation_failed'));
+      return null;
     }
   }, [router, t]);
 
   const fetchTransactions = useCallback(async (acc: string) => {
     try {
       setRefreshing(true);
-      const res = await fetch(`/api/transactions?account=${encodeURIComponent(acc)}&limit=50`);
-      const data: any = await readJson(res);
+      const data = await fetchTransactionsJava({ account: acc, limit: 50 });
       const txs = Array.isArray(data?.transactions) ? data.transactions : [];
       setTransactions(txs);
-      if (!res.ok) {
-        setError(data?.error || t('user.operation_failed'));
-      }
+      setError(null);
     } catch (e: any) {
       setTransactions([]);
       setError(e?.message || t('user.operation_failed'));
@@ -98,11 +102,11 @@ export default function UserPage() {
   }, [t]);
 
   const refreshData = useCallback(async () => {
-    if (!me) return;
     setRefreshing(true);
     try {
-      await fetchMe();
-      await fetchTransactions(me.account_number);
+      const updated = await fetchMe();
+      const acc = updated?.account_number ?? me?.account_number;
+      if (acc) await fetchTransactions(acc);
     } catch (e: any) {
       setError(e?.message || t('user.operation_failed'));
     } finally {
@@ -111,6 +115,8 @@ export default function UserPage() {
   }, [fetchMe, fetchTransactions, me, t]);
 
   useEffect(() => {
+    // Log Java API configuration for debugging
+    config.logConfig();
     fetchMe().catch(() => undefined);
   }, [fetchMe]);
 
@@ -186,36 +192,29 @@ export default function UserPage() {
     try {
       let opOk = false;
       try {
-        const body: any = { type, source_account: me.account_number, amount: amt };
-        if (type === "withdraw") body.pin = wdPin;
+        const transactionData = {
+          type: type as 'deposit' | 'withdraw',
+          source_account: me.account_number,
+          amount: amt,
+          note: `${type.charAt(0).toUpperCase() + type.slice(1)} operation`,
+          pin: type === 'withdraw' ? wdPin : undefined
+        };
 
-        const res = await fetch("/api/transactions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
-        });
-        const data: any = await readJson(res);
-        if (!res.ok) {
-          if (res.status >= 500 || String(data?.error || "").toLowerCase().includes("transaction")) {
-            const fallback = await fetch(`/api/accounts/${me.account_number}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ op: type, amount: amt }),
-            });
-            const fdata: any = await readJson(fallback);
-            if (!fallback.ok) {
-              setError(fdata?.error || t('user.operation_failed'));
-              return;
-            }
-            opOk = true;
-          } else {
-            setError(data?.error || t('user.operation_failed'));
-            return;
-          }
-        } else {
+        const result = await createTransaction(transactionData);
+        if (result.success) {
           opOk = true;
+          // If Java server returned updated balances, reflect them immediately
+          try {
+            const tx: any = result.transaction;
+            if (tx && typeof tx.source_balance_after !== 'undefined') {
+              setAuthMe((prev) => prev && prev.account ? { ...prev, account: { ...prev.account, balance: Number(tx.source_balance_after) } } : prev);
+            }
+          } catch {}
+        } else {
+          throw new Error(result.message || 'Transaction failed');
         }
       } catch (e: any) {
+        // Fallback to account API for backward compatibility
         try {
           const fallback = await fetch(`/api/accounts/${me.account_number}`, {
             method: "PATCH",
@@ -271,37 +270,29 @@ export default function UserPage() {
 
       let opOk = false;
       try {
-        const res = await fetch("/api/transactions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "transfer", source_account: me.account_number, target_account: txTarget, amount: amt, pin: txPin })
-        });
-        const data: any = await readJson(res);
-        if (!res.ok) {
-          if (res.status >= 500 || String(data?.error || "").toLowerCase().includes("transaction")) {
-            let w = await fetch(`/api/accounts/${me.account_number}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ op: "withdraw", amount: amt }),
-            });
-            let wdata: any = await readJson(w);
-            if (!w.ok) { setError(wdata?.error || t('user.transfer_failed')); return; }
-            let d = await fetch(`/api/accounts/${txTarget}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ op: "deposit", amount: amt }),
-            });
-            let ddata: any = await readJson(d);
-            if (!d.ok) { setError(ddata?.error || t('user.transfer_failed')); return; }
-            opOk = true;
-          } else {
-            setError(data?.error || t('user.transfer_failed'));
-            return;
-          }
-        } else {
+        const transactionData = {
+          type: 'transfer' as const,
+          source_account: me.account_number,
+          target_account: txTarget,
+          amount: amt,
+          note: `Transfer to ${verification.maskedName || txTarget}`,
+          pin: txPin
+        };
+
+        const result = await createTransaction(transactionData);
+        if (result.success) {
           opOk = true;
+          try {
+            const tx: any = result.transaction;
+            if (tx && typeof tx.source_balance_after !== 'undefined') {
+              setAuthMe((prev) => prev && prev.account ? { ...prev, account: { ...prev.account, balance: Number(tx.source_balance_after) } } : prev);
+            }
+          } catch {}
+        } else {
+          throw new Error(result.message || 'Transfer failed');
         }
       } catch (e: any) {
+        // Fallback to manual account operations for backward compatibility
         try {
           let w = await fetch(`/api/accounts/${me.account_number}`, {
             method: "PATCH",
@@ -309,17 +300,17 @@ export default function UserPage() {
             body: JSON.stringify({ op: "withdraw", amount: amt }),
           });
           let wdata: any = await readJson(w);
-          if (!w.ok) { setError(wdata?.error || (e?.message || t('user.transfer_failed'))); return; }
+          if (!w.ok) { setError(wdata?.error || t('user.transfer_failed')); return; }
           let d = await fetch(`/api/accounts/${txTarget}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ op: "deposit", amount: amt }),
           });
           let ddata: any = await readJson(d);
-          if (!d.ok) { setError(ddata?.error || (e?.message || t('user.transfer_failed'))); return; }
+          if (!d.ok) { setError(ddata?.error || t('user.transfer_failed')); return; }
           opOk = true;
         } catch (err: any) {
-          setError(err?.message || (e?.message || t('user.transfer_failed')));
+          setError(err?.message || t('user.transfer_failed'));
           return;
         }
       }
@@ -354,9 +345,37 @@ export default function UserPage() {
     setQrModalOpen(false);
   };
 
+  const copyAccountNumber = useCallback(async () => {
+    const text = String(me?.account_number ?? "").trim();
+    if (!text) return;
+
+    try {
+      const canUseClipboard = typeof navigator !== "undefined" && !!navigator.clipboard && !!window.isSecureContext;
+      if (canUseClipboard) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.top = "-9999px";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (!ok) throw new Error("copy_failed");
+      }
+      toast.show(t("dash.copied"), "success");
+    } catch {
+      toast.show(t("dash.copy_failed"), "error");
+    }
+  }, [me?.account_number, t, toast]);
+
   return (
     <main>
       <Header />
+      {/* <JavaServerTest /> */}
       <section className="quick-actions">
         <div className="inner container" style={{ display: "grid", gap: 16 }}>
           {me && (
@@ -386,7 +405,19 @@ export default function UserPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.3em', flexWrap: 'wrap', width: '100%' }}>
                 <div style={{ flex: '1 1 auto' }}>
                   <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>{t('dash.account')}</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.3px' }}>{me.account_number}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.3px' }}>{me.account_number}</div>
+                    <button
+                      className="btn ghost"
+                      onClick={copyAccountNumber}
+                      type="button"
+                      title={t("dash.copy")}
+                      aria-label={t("dash.copy")}
+                      style={{ padding: "6px 10px", fontSize: 12 }}
+                    >
+                      {t("dash.copy")}
+                    </button>
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '0 0 auto' }}>
@@ -494,7 +525,7 @@ export default function UserPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {transactions.map(t => {
+                  {transactions.slice(0, 10).map(t => {
                     const isIncoming = t.target_account === me?.account_number || t.type === 'deposit';
                     return (
                       <tr key={t.id}>

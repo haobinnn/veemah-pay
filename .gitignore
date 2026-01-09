@@ -24,6 +24,18 @@ pnpm-debug.log*
 # OS
 .DS_Store
 
+# Java build outputs
+java-server/target/
+*.jar
+
 # Misc
 .pnpm-store/
 tsconfig.tsbuildinfo
+
+# Java files
+*.class
+*.jar
+
+# Temporary files
+*.pid
+*.log
