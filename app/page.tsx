@@ -38,8 +38,7 @@ export default function Page() {
               color: 'transparent' // Fallback
             }}>
               <span style={{ fontFamily: 'var(--font-longhaul), system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif' }}>
-                <span style={{ letterSpacing: '0.06em' }}>Veemah</span>
-                <span style={{ fontSize: '0.52em', letterSpacing: '0.14em', marginLeft: '0.12em', fontWeight: 800, verticalAlign: 'baseline' }}>Pay</span>
+                <span style={{ letterSpacing: '0.02em' }}>Veemah</span><span style={{ fontSize: '0.52em', letterSpacing: '0.02em', fontWeight: 800, verticalAlign: 'baseline' }}>Pay</span>
               </span>
             </h1>
              
