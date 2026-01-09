@@ -7,7 +7,6 @@ import { useLanguage } from '@/components/ui/LanguageProvider';
 import { QRModal } from '@/components/ui/QRModal';
 import { MoneyDisplay, PositiveMoney } from '@/components/ui/MoneyDisplay';
 import { fetchTransactions as fetchTransactionsJava, createTransaction, config } from '@/lib/java-api';
-import { JavaServerTest } from '@/components/ui/JavaServerTest';
 
 type Account = { account_number: string; name: string; balance: number; status: string };
 type Transaction = { id: number; type: string; status: string; amount: number; account_number?: string; target_account?: string | null; note?: string | null; created_at?: string };

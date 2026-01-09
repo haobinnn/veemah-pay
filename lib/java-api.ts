@@ -11,8 +11,7 @@
 	process.env.NEXT_PUBLIC_JAVA_API_URL ||
 	process.env.JAVA_TRANSACTION_API ||
 	(process.env.NODE_ENV === "production"
-		? process.env.NEXT_PUBLIC_JAVA_API_URL ||
-		  "https://your-production-domain.com"
+		? null // Force fallback to Next.js API in production without explicit config
 		: "http://localhost:8081");
 
 /**
@@ -30,7 +29,7 @@ function createHeaders(
 	}
 
 	// Add ngrok skip warning header for tunnel requests
-	if (JAVA_API_BASE.includes("ngrok") || JAVA_API_BASE.includes("tunnel")) {
+	if (JAVA_API_BASE && (JAVA_API_BASE.includes("ngrok") || JAVA_API_BASE.includes("tunnel"))) {
 		headers["ngrok-skip-browser-warning"] = "true";
 	}
 
@@ -93,6 +92,12 @@ export interface ApiErrorResponse {
  */
 async function checkJavaServerHealth(): Promise<boolean> {
 	try {
+		// In production without proper environment variables, skip Java server
+		if (config.isProduction && !JAVA_API_BASE) {
+			console.log("🔄 Production mode without Java API URL configured, using Next.js API fallback");
+			return false;
+		}
+		
 		await checkServerHealth();
 		return true;
 	} catch (error) {
@@ -165,7 +170,7 @@ export async function fetchTransactions(params: {
 	// First check if Java server is healthy
 	const javaServerHealthy = await checkJavaServerHealth();
 
-	if (!javaServerHealthy) {
+	if (!javaServerHealthy || !JAVA_API_BASE) {
 		console.log("🔄 Falling back to Next.js API for transactions");
 		return fetchTransactionsNextJS(params);
 	}
@@ -219,7 +224,7 @@ export async function fetchTransaction(
 	// First check if Java server is healthy
 	const javaServerHealthy = await checkJavaServerHealth();
 
-	if (!javaServerHealthy) {
+	if (!javaServerHealthy || !JAVA_API_BASE) {
 		console.log("🔄 Falling back to Next.js API for single transaction fetch");
 		const response = await fetch(`/api/transactions/${id}`, {
 			method: "GET",
@@ -329,7 +334,7 @@ export async function createTransaction(
 	// First check if Java server is healthy
 	const javaServerHealthy = await checkJavaServerHealth();
 
-	if (!javaServerHealthy) {
+	if (!javaServerHealthy || !JAVA_API_BASE) {
 		console.log("🔄 Falling back to Next.js API for transaction creation");
 		return createTransactionNextJS(data);
 	}
@@ -372,6 +377,10 @@ export async function updateTransaction(
 	id: string | number,
 	data: UpdateTransactionRequest
 ): Promise<CreateTransactionResponse> {
+	if (!JAVA_API_BASE) {
+		throw new Error("Java API not configured, update operations require Java server");
+	}
+	
 	try {
 		const response = await fetch(`${JAVA_API_BASE}/api/transactions/${id}`, {
 			method: "PUT",
@@ -399,6 +408,10 @@ export async function updateTransaction(
 export async function cancelTransaction(
 	id: string | number
 ): Promise<{ success: boolean; message: string }> {
+	if (!JAVA_API_BASE) {
+		throw new Error("Java API not configured, cancel operations require Java server");
+	}
+	
 	try {
 		const response = await fetch(`${JAVA_API_BASE}/api/transactions/${id}`, {
 			method: "DELETE",
@@ -428,6 +441,10 @@ export async function checkServerHealth(): Promise<{
 	database: string;
 	timestamp: string;
 }> {
+	if (!JAVA_API_BASE) {
+		throw new Error("Java API base URL not configured");
+	}
+	
 	const url = `${JAVA_API_BASE}/health`;
 	console.log(`🔗 Health check URL: ${url}`);
 
@@ -545,7 +562,7 @@ export const config = {
 			useJavaServer: this.useJavaServer,
 			autoFallback: this.autoFallback,
 			hasNgrokHeader:
-				this.apiBase.includes("ngrok") || this.apiBase.includes("tunnel"),
+				this.apiBase && (this.apiBase.includes("ngrok") || this.apiBase.includes("tunnel")),
 			env: {
 				NEXT_PUBLIC_JAVA_API_URL: process.env.NEXT_PUBLIC_JAVA_API_URL,
 				JAVA_TRANSACTION_API: process.env.JAVA_TRANSACTION_API,
