@@ -98,6 +98,18 @@ export interface ApiErrorResponse {
 	timestamp: string;
 }
 
+// Health check cache to avoid repeated expensive calls
+let healthCheckCache: { 
+	isHealthy: boolean; 
+	timestamp: number; 
+	promise?: Promise<boolean>;
+} | null = null;
+const HEALTH_CHECK_CACHE_DURATION = 30000; // 30 seconds
+const HEALTH_CHECK_TIMEOUT = 3000; // 3 seconds timeout for health checks
+
+/**
+ * Check if Java server is healthy before making API calls
+ */
 /**
  * Check if Java server is healthy before making API calls
  */
@@ -108,21 +120,133 @@ async function checkJavaServerHealth(): Promise<boolean> {
 			console.log("🔄 Production mode without Java API URL configured, using Next.js API fallback");
 			return false;
 		}
+
+		// Check cache first
+		const now = Date.now();
+		if (healthCheckCache && (now - healthCheckCache.timestamp) < HEALTH_CHECK_CACHE_DURATION) {
+			console.log("🚀 Using cached health check result:", healthCheckCache.isHealthy);
+			return healthCheckCache.isHealthy;
+		}
+
+		// If there's already a health check in progress, wait for it
+		if (healthCheckCache?.promise) {
+			console.log("⏳ Health check already in progress, waiting...");
+			return await healthCheckCache.promise;
+		}
+
+		// Start new health check
+		const healthPromise = performHealthCheck();
 		
-		await checkServerHealth();
-		return true;
+		// Cache the promise to prevent multiple concurrent checks
+		healthCheckCache = {
+			isHealthy: false,
+			timestamp: now,
+			promise: healthPromise
+		};
+
+		const isHealthy = await healthPromise;
+		
+		// Update cache with result
+		healthCheckCache = {
+			isHealthy,
+			timestamp: now,
+			promise: undefined
+		};
+
+		return isHealthy;
 	} catch (error) {
-		console.warn(
-			"🔄 Java server health check failed, will use fallback:",
-			error
-		);
+		console.warn("🔄 Java server health check failed, will use fallback:", error);
+		
+		// Cache the failed result for a shorter duration to retry sooner
+		healthCheckCache = {
+			isHealthy: false,
+			timestamp: Date.now() - HEALTH_CHECK_CACHE_DURATION + 5000, // Retry in 5 seconds
+			promise: undefined
+		};
+		
 		return false;
 	}
 }
 
 /**
- * Fallback: Fetch transactions using Next.js API
+ * Perform the actual health check with optimized timeouts
  */
+async function performHealthCheck(): Promise<boolean> {
+	if (!JAVA_API_BASE) {
+		throw new Error("Java API base URL not configured");
+	}
+	
+	const url = `${JAVA_API_BASE}/health`;
+	console.log(`🔗 Health check URL: ${url}`);
+
+	try {
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT);
+
+		const response = await fetch(url, {
+			method: "GET",
+			headers: createHeaders("none"),
+			signal: controller.signal,
+			// Optimize for speed
+			cache: "no-cache",
+			keepalive: true
+		});
+
+		clearTimeout(timeoutId);
+
+		console.log(`📡 Health check response: ${response.status} ${response.statusText}`);
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			console.log(`❌ Health check failed: ${response.status} - ${errorText}`);
+			throw new Error(`Health check failed: ${response.status} - ${errorText}`);
+		}
+
+		const result = await response.json();
+		console.log(`✅ Health check successful`);
+		return true;
+	} catch (error) {
+		if (error instanceof Error && error.name === 'AbortError') {
+			console.error("❌ Health check timed out after", HEALTH_CHECK_TIMEOUT, "ms");
+			throw new Error("Health check timeout");
+		}
+		
+		console.error("❌ Health check error:", error instanceof Error ? error.message : String(error));
+		throw error;
+	}
+}
+
+/**
+ * Optimized fetch wrapper for Java API calls
+ */
+async function javaApiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout for regular requests
+
+	try {
+		const response = await fetch(url, {
+			...options,
+			signal: controller.signal,
+			// Optimize for speed and connection reuse
+			cache: "no-cache",
+			keepalive: true,
+			headers: {
+				...options.headers,
+				// Add connection optimization hints
+				'Connection': 'keep-alive',
+			}
+		});
+
+		clearTimeout(timeoutId);
+		return response;
+	} catch (error) {
+		clearTimeout(timeoutId);
+		if (error instanceof Error && error.name === 'AbortError') {
+			throw new Error(`Request timed out after 8 seconds`);
+		}
+		throw error;
+	}
+}
 async function fetchTransactionsNextJS(params: {
 	account: string;
 	type?: string;
@@ -196,7 +320,7 @@ export async function fetchTransactions(params: {
 	console.log(`🔗 Fetching transactions from Java server: ${url}`);
 
 	try {
-		const response = await fetch(url, {
+		const response = await javaApiFetch(url, {
 			method: "GET",
 			headers: createHeaders("none"),
 		});
@@ -256,7 +380,7 @@ export async function fetchTransaction(
 	}
 
 	try {
-		const response = await fetch(`${JAVA_API_BASE}/api/transactions/${id}`, {
+		const response = await javaApiFetch(`${JAVA_API_BASE}/api/transactions/${id}`, {
 			method: "GET",
 			headers: createHeaders("none"),
 		});
@@ -355,7 +479,7 @@ export async function createTransaction(
 	console.log(`🔗 Creating transaction at Java server: ${url}`, data);
 
 	try {
-		const response = await fetch(url, {
+		const response = await javaApiFetch(url, {
 			method: "POST",
 			headers: createHeaders("application/json"),
 			body: JSON.stringify(data),
@@ -394,7 +518,7 @@ export async function updateTransaction(
 	}
 	
 	try {
-		const response = await fetch(`${JAVA_API_BASE}/api/transactions/${id}`, {
+		const response = await javaApiFetch(`${JAVA_API_BASE}/api/transactions/${id}`, {
 			method: "PUT",
 			headers: createHeaders("application/json"),
 			body: JSON.stringify(data),
@@ -425,7 +549,7 @@ export async function cancelTransaction(
 	}
 	
 	try {
-		const response = await fetch(`${JAVA_API_BASE}/api/transactions/${id}`, {
+		const response = await javaApiFetch(`${JAVA_API_BASE}/api/transactions/${id}`, {
 			method: "DELETE",
 			headers: createHeaders("none"),
 		});
@@ -445,7 +569,7 @@ export async function cancelTransaction(
 }
 
 /**
- * Check if the Java transaction server is healthy
+ * Check if the Java transaction server is healthy (public API)
  */
 export async function checkServerHealth(): Promise<{
 	status: string;
@@ -461,18 +585,14 @@ export async function checkServerHealth(): Promise<{
 	console.log(`🔗 Health check URL: ${url}`);
 
 	try {
-		const response = await fetch(url, {
+		const response = await javaApiFetch(url, {
 			method: "GET",
 			headers: createHeaders("none"),
-			// Add timeout and other fetch options for better debugging
-			signal: AbortSignal.timeout(10000), // 10 second timeout
 		});
 
 		console.log(
 			`📡 Health check response: ${response.status} ${response.statusText}`
 		);
-		console.log(`🔍 Response URL:`, response.url);
-		console.log(`🔍 Response type:`, response.type);
 
 		if (!response.ok) {
 			const errorText = await response.text();
@@ -487,9 +607,7 @@ export async function checkServerHealth(): Promise<{
 		console.error("❌ Health check error details:", {
 			name: error instanceof Error ? error.name : "Unknown",
 			message: error instanceof Error ? error.message : String(error),
-			stack: error instanceof Error ? error.stack : undefined,
 			url,
-			headers: createHeaders("none"),
 		});
 		throw error;
 	}
@@ -566,6 +684,23 @@ export const config = {
 	// will check Java server health first and fall back to Next.js API if needed
 	autoFallback: true,
 
+	// Performance settings
+	healthCheckTimeout: HEALTH_CHECK_TIMEOUT,
+	healthCheckCacheDuration: HEALTH_CHECK_CACHE_DURATION,
+	requestTimeout: 8000,
+
+	// Clear health check cache (useful for testing)
+	clearHealthCache() {
+		healthCheckCache = null;
+		console.log("🧹 Health check cache cleared");
+	},
+
+	// Force health check (bypasses cache)
+	async forceHealthCheck() {
+		healthCheckCache = null;
+		return await checkJavaServerHealth();
+	},
+
 	// Log configuration for debugging
 	logConfig() {
 		const shouldAddNgrokHeader = JAVA_API_BASE && (
@@ -582,6 +717,14 @@ export const config = {
 			useJavaServer: this.useJavaServer,
 			autoFallback: this.autoFallback,
 			shouldAddNgrokHeader,
+			performance: {
+				healthCheckTimeout: this.healthCheckTimeout + "ms",
+				healthCheckCacheDuration: this.healthCheckCacheDuration + "ms", 
+				requestTimeout: this.requestTimeout + "ms",
+				cacheStatus: healthCheckCache ? 
+					`Cached (${Math.round((Date.now() - healthCheckCache.timestamp) / 1000)}s ago, healthy: ${healthCheckCache.isHealthy})` : 
+					"No cache"
+			},
 			ngrokDetection: {
 				containsNgrok: this.apiBase?.includes("ngrok"),
 				containsTunnel: this.apiBase?.includes("tunnel"), 
