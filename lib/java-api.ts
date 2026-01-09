@@ -68,6 +68,7 @@ export interface CreateTransactionRequest {
 	note?: string;
 	status?: string;
 	created_by?: string;
+	pin?: string;
 }
 
 export interface CreateTransactionResponse {
@@ -297,11 +298,12 @@ async function createTransactionNextJS(
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({
 			type: data.type,
-			account_number: data.source_account,
+			source_account: data.source_account,
 			target_account: data.target_account,
 			amount: data.amount,
 			note: data.note,
 			pending: data.status === "Pending",
+			pin: data.pin,
 		}),
 	});
 

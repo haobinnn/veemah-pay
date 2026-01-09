@@ -749,14 +749,15 @@ export async function GET(req: NextRequest) {
     if (!source_account || (t === 'transfer' && !target_account)) {
       return NextResponse.json({ error: 'Missing account(s)' }, { status: 400 });
     }
-    if ((t === 'withdraw' || t === 'transfer') && !pin) {
-        return NextResponse.json({ error: 'PIN is required for this transaction.' }, { status: 400 });
-    }
 
     // Authorization: customers can only act on their own source account; admin can act on any.
     const isAdmin = await isAdminSession(session);
     if (!isAdmin && session !== source_account) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    if ((t === 'withdraw' || t === 'transfer') && !isAdmin && !pin) {
+        return NextResponse.json({ error: 'PIN is required for this transaction.' }, { status: 400 });
     }
 
     try {

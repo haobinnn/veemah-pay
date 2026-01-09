@@ -6,6 +6,7 @@ import { SpendingGraph } from '@/components/dashboard/SpendingGraph';
 import { useLanguage } from '@/components/ui/LanguageProvider';
 import { QRModal } from '@/components/ui/QRModal';
 import { MoneyDisplay, PositiveMoney } from '@/components/ui/MoneyDisplay';
+import { useToast } from "@/components/ui/Toast";
 import { fetchTransactions as fetchTransactionsJava, createTransaction, config } from '@/lib/java-api';
 
 type Account = { account_number: string; name: string; balance: number; status: string };
@@ -15,6 +16,7 @@ type Transaction = { id: number; type: string; status: string; amount: number; a
 export default function UserPage() {
   const router = useRouter();
   const { t } = useLanguage();
+  const toast = useToast();
   const [me, setMe] = useState<Account | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -190,7 +192,8 @@ export default function UserPage() {
           type: type as 'deposit' | 'withdraw',
           source_account: me.account_number,
           amount: amt,
-          note: `${type.charAt(0).toUpperCase() + type.slice(1)} operation`
+          note: `${type.charAt(0).toUpperCase() + type.slice(1)} operation`,
+          pin: type === 'withdraw' ? wdPin : undefined
         };
 
         const result = await createTransaction(transactionData);
@@ -261,7 +264,8 @@ export default function UserPage() {
           source_account: me.account_number,
           target_account: txTarget,
           amount: amt,
-          note: `Transfer to ${verification.maskedName || txTarget}`
+          note: `Transfer to ${verification.maskedName || txTarget}`,
+          pin: txPin
         };
 
         const result = await createTransaction(transactionData);
@@ -324,6 +328,33 @@ export default function UserPage() {
     setQrModalOpen(false);
   };
 
+  const copyAccountNumber = useCallback(async () => {
+    const text = String(me?.account_number ?? "").trim();
+    if (!text) return;
+
+    try {
+      const canUseClipboard = typeof navigator !== "undefined" && !!navigator.clipboard && !!window.isSecureContext;
+      if (canUseClipboard) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.top = "-9999px";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (!ok) throw new Error("copy_failed");
+      }
+      toast.show(t("dash.copied"), "success");
+    } catch {
+      toast.show(t("dash.copy_failed"), "error");
+    }
+  }, [me?.account_number, t, toast]);
+
   return (
     <main>
       <Header />
@@ -357,7 +388,19 @@ export default function UserPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.3em', flexWrap: 'wrap', width: '100%' }}>
                 <div style={{ flex: '1 1 auto' }}>
                   <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>{t('dash.account')}</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.3px' }}>{me.account_number}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.3px' }}>{me.account_number}</div>
+                    <button
+                      className="btn ghost"
+                      onClick={copyAccountNumber}
+                      type="button"
+                      title={t("dash.copy")}
+                      aria-label={t("dash.copy")}
+                      style={{ padding: "6px 10px", fontSize: 12 }}
+                    >
+                      {t("dash.copy")}
+                    </button>
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '0 0 auto' }}>

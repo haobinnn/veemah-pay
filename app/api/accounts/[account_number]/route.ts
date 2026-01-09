@@ -82,11 +82,26 @@ export async function POST(req: NextRequest, { params }: { params: { account_num
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
     });
-    const data = await upstream.json().catch(() => null);
-    if (!upstream.ok) {
-      return NextResponse.json(data ?? { error: 'Upstream error' }, { status: upstream.status });
+    if (upstream.ok) {
+      const data = await upstream.json().catch(() => null);
+      return NextResponse.json(data);
     }
-    return NextResponse.json(data);
+    console.warn(`[POST /api/accounts] Java server returned ${upstream.status}, falling back to local DB.`);
+  } catch (err: any) {
+    console.warn('[POST /api/accounts] Java server unreachable, falling back to local DB:', err);
+  }
+
+  // Local DB fallback
+  try {
+    const res = await pool.query('SELECT name FROM accounts WHERE account_number = $1', [account_number]);
+    if (res.rowCount === 0) {
+      return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+    }
+    const row = res.rows[0];
+    return NextResponse.json({
+      exists: true,
+      maskedName: maskAccountName(row.name),
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? 'Server error' }, { status: 500 });
   }

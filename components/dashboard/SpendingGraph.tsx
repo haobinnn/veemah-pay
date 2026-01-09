@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Area,
   Bar,
@@ -122,6 +122,35 @@ function movingAverage(values: number[], windowSize: number) {
 export function SpendingGraph({ transactions }: Props) {
   const { t } = useLanguage();
   const [selectedRange, setSelectedRange] = useState<TimeRange>('30d');
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    const el = document.documentElement;
+    const readTheme = () => (el.getAttribute("data-theme") === "dark" ? "dark" : "light");
+    setTheme(readTheme());
+    const obs = new MutationObserver(() => setTheme(readTheme()));
+    obs.observe(el, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => obs.disconnect();
+  }, []);
+
+  const isDark = theme === "dark";
+  const incomeStroke = isDark ? "#00f2ff" : "#0aa2c0";
+  const expenseStroke = isDark ? "#ff0055" : "#d81b60";
+  const areaFillOpacity = isDark ? 0.35 : 0.22;
+  const gridOpacity = isDark ? 0.3 : 0.45;
+  const avgStroke = isDark ? "rgba(255,255,255,0.55)" : "rgba(15, 22, 40, 0.55)";
+  const netStroke = isDark ? "rgba(255,255,255,0.65)" : "rgba(15, 22, 40, 0.6)";
+  const cursorStroke = isDark ? "rgba(255,255,255,0.2)" : "rgba(15,22,40,0.18)";
+  const tooltipBg = isDark ? "rgba(15, 22, 40, 0.85)" : "rgba(255,255,255,0.96)";
+  const tooltipBorder = isDark ? "rgba(255,255,255,0.1)" : "rgba(15,22,40,0.12)";
+  const tooltipText = isDark ? "#fff" : "var(--text)";
+  const tooltipShadow = isDark ? "0 8px 32px rgba(0,0,0,0.4)" : "0 10px 28px rgba(15,22,40,0.18)";
+  const tooltipLabelColor = isDark ? "rgba(255,255,255,0.72)" : "var(--muted)";
+  const categoryThisFill = isDark ? "rgba(255, 0, 85, 0.75)" : "rgba(216, 27, 96, 0.78)";
+  const categoryPrevFill = isDark ? "rgba(255, 0, 85, 0.25)" : "rgba(216, 27, 96, 0.38)";
+  const categoryPrevStroke = isDark ? "rgba(255, 0, 85, 0.55)" : "rgba(216, 27, 96, 0.62)";
+  const monthIncomeFill = isDark ? "rgba(0, 242, 255, 0.55)" : "rgba(10, 162, 192, 0.75)";
+  const monthExpenseFill = isDark ? "rgba(255, 0, 85, 0.55)" : "rgba(216, 27, 96, 0.75)";
 
   const rangeLabel =
     selectedRange === '7d'
@@ -423,15 +452,15 @@ export function SpendingGraph({ transactions }: Props) {
               >
                 <defs>
                   <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#00f2ff" stopOpacity={0.35}/>
-                    <stop offset="95%" stopColor="#00f2ff" stopOpacity={0}/>
+                    <stop offset="5%" stopColor={incomeStroke} stopOpacity={areaFillOpacity}/>
+                    <stop offset="95%" stopColor={incomeStroke} stopOpacity={0}/>
                   </linearGradient>
                   <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#ff0055" stopOpacity={0.35}/>
-                    <stop offset="95%" stopColor="#ff0055" stopOpacity={0}/>
+                    <stop offset="5%" stopColor={expenseStroke} stopOpacity={areaFillOpacity}/>
+                    <stop offset="95%" stopColor={expenseStroke} stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} opacity={0.3} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} opacity={gridOpacity} />
                 <XAxis
                   dataKey="dateLabel"
                   stroke="var(--muted)"
@@ -452,48 +481,85 @@ export function SpendingGraph({ transactions }: Props) {
                 />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: 'rgba(15, 22, 40, 0.85)',
-                    borderColor: 'rgba(255,255,255,0.1)',
-                    color: '#fff',
+                    backgroundColor: tooltipBg,
+                    borderColor: tooltipBorder,
+                    color: tooltipText,
                     backdropFilter: 'blur(8px)',
                     borderRadius: '12px',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-                    border: '1px solid rgba(255,255,255,0.1)'
+                    boxShadow: tooltipShadow,
+                    border: `1px solid ${tooltipBorder}`
                   }}
                   itemStyle={{ fontSize: 13, fontWeight: 500 }}
-                  labelStyle={{ color: 'var(--muted)', marginBottom: 8, fontSize: 12 }}
-                  cursor={{ stroke: 'rgba(255,255,255,0.2)', strokeWidth: 1, strokeDasharray: '4 4' }}
+                  labelStyle={{ color: tooltipLabelColor, marginBottom: 8, fontSize: 12 }}
+                  cursor={{ stroke: cursorStroke, strokeWidth: 1, strokeDasharray: '4 4' }}
                   formatter={(value: any, name: any) => [formatMoney(Number(value)), name]}
                 />
-                <Legend wrapperStyle={{ paddingTop: 10 }} iconType="circle" />
+                <Legend content={(props: any) => {
+                  const items = (props?.payload ?? []).filter(
+                    (item: any) => item?.value === t('graph.income') || item?.value === t('graph.expense')
+                  );
+                  if (!items.length) return null;
+                  return (
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 12,
+                        paddingTop: 10,
+                        fontSize: 12,
+                        color: 'var(--text)',
+                      }}
+                    >
+                      {items.map((entry: any) => (
+                        <div
+                          key={entry.value}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}
+                        >
+                          <span
+                            style={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: '50%',
+                              backgroundColor: entry.color || 'var(--muted)',
+                              flex: '0 0 auto',
+                            }}
+                          />
+                          <span style={{ whiteSpace: 'nowrap' }}>{entry.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }} />
 
                 <Area
                   type="monotone"
                   dataKey="income"
                   name={t('graph.income')}
-                  stroke="#00f2ff"
+                  stroke={incomeStroke}
                   strokeWidth={3}
                   fillOpacity={1}
                   fill="url(#colorIncome)"
-                  activeDot={{ r: 6, strokeWidth: 0, fill: '#00f2ff', filter: 'drop-shadow(0 0 8px #00f2ff)' }}
+                  activeDot={{ r: 6, strokeWidth: 0, fill: incomeStroke, filter: `drop-shadow(0 0 8px ${incomeStroke})` }}
                   animationDuration={1200}
                 />
                 <Area
                   type="monotone"
                   dataKey="expense"
                   name={t('graph.expense')}
-                  stroke="#ff0055"
+                  stroke={expenseStroke}
                   strokeWidth={3}
                   fillOpacity={1}
                   fill="url(#colorExpense)"
-                  activeDot={{ r: 6, strokeWidth: 0, fill: '#ff0055', filter: 'drop-shadow(0 0 8px #ff0055)' }}
+                  activeDot={{ r: 6, strokeWidth: 0, fill: expenseStroke, filter: `drop-shadow(0 0 8px ${expenseStroke})` }}
                   animationDuration={1200}
                 />
                 <Line
                   type="monotone"
                   dataKey="expenseAvg7"
                   name={t('graph.expense_avg_7d')}
-                  stroke="rgba(255,255,255,0.55)"
+                  stroke={avgStroke}
                   strokeWidth={2}
                   dot={false}
                   isAnimationActive={false}
@@ -508,7 +574,7 @@ export function SpendingGraph({ transactions }: Props) {
               <div style={{ width: '100%', height: 260 }}>
                 <ResponsiveContainer>
                   <BarChart data={analytics.categories} margin={{ top: 10, right: 10, left: 0, bottom: 0 }} barGap={6} barCategoryGap="35%">
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} opacity={0.3} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} opacity={gridOpacity} />
                     <XAxis dataKey="category" stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} interval={0} angle={-15} textAnchor="end" height={50} />
                     <YAxis stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `₱${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`} />
                     <Tooltip
@@ -531,28 +597,28 @@ export function SpendingGraph({ transactions }: Props) {
                         return (
                           <div
                             style={{
-                              backgroundColor: 'rgba(15, 22, 40, 0.85)',
-                              borderColor: 'rgba(255,255,255,0.1)',
-                              color: '#fff',
+                              backgroundColor: tooltipBg,
+                              borderColor: tooltipBorder,
+                              color: tooltipText,
                               backdropFilter: 'blur(8px)',
                               borderRadius: '12px',
-                              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-                              border: '1px solid rgba(255,255,255,0.1)',
+                              boxShadow: tooltipShadow,
+                              border: `1px solid ${tooltipBorder}`,
                               padding: 12,
                             }}
                           >
                             <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>{String(label ?? '')}</div>
                             <div style={{ display: 'grid', gap: 4, fontSize: 13 }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                                <span style={{ color: 'var(--muted)' }}>{t('graph.this_period')}</span>
+                                <span style={{ color: tooltipLabelColor }}>{t('graph.this_period')}</span>
                                 <span>{formatMoney(thisPeriod)}</span>
                               </div>
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                                <span style={{ color: 'var(--muted)' }}>{t('graph.prev_period')}</span>
+                                <span style={{ color: tooltipLabelColor }}>{t('graph.prev_period')}</span>
                                 <span>{formatMoney(prevPeriod)}</span>
                               </div>
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 4 }}>
-                                <span style={{ color: 'var(--muted)' }}>{t('graph.change')}</span>
+                                <span style={{ color: tooltipLabelColor }}>{t('graph.change')}</span>
                                 <span style={{ color: deltaAbs > 0 ? '#ff4d7d' : deltaAbs < 0 ? '#7bdcff' : 'var(--muted)' }}>{changeText}</span>
                               </div>
                             </div>
@@ -560,9 +626,9 @@ export function SpendingGraph({ transactions }: Props) {
                         );
                       }}
                     />
-                    <Legend wrapperStyle={{ paddingTop: 6 }} iconType="circle" />
-                    <Bar dataKey="thisPeriod" name={t('graph.this_period')} fill="rgba(255, 0, 85, 0.75)" radius={[8, 8, 0, 0]} maxBarSize={18} />
-                    <Bar dataKey="prevPeriod" name={t('graph.prev_period')} fill="rgba(255, 0, 85, 0.25)" stroke="rgba(255, 0, 85, 0.55)" radius={[8, 8, 0, 0]} maxBarSize={18} />
+                    <Legend wrapperStyle={{ paddingTop: 6, color: "var(--text)" }} iconType="circle" />
+                    <Bar dataKey="thisPeriod" name={t('graph.this_period')} fill={categoryThisFill} radius={[8, 8, 0, 0]} maxBarSize={18} />
+                    <Bar dataKey="prevPeriod" name={t('graph.prev_period')} fill={categoryPrevFill} stroke={categoryPrevStroke} radius={[8, 8, 0, 0]} maxBarSize={18} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -573,25 +639,25 @@ export function SpendingGraph({ transactions }: Props) {
               <div style={{ width: '100%', height: 260 }}>
                 <ResponsiveContainer>
                   <ComposedChart data={analytics.months} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} opacity={0.3} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} opacity={gridOpacity} />
                     <XAxis dataKey="monthLabel" stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} />
                     <YAxis stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `₱${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`} />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: 'rgba(15, 22, 40, 0.85)',
-                        borderColor: 'rgba(255,255,255,0.1)',
-                        color: '#fff',
+                        backgroundColor: tooltipBg,
+                        borderColor: tooltipBorder,
+                        color: tooltipText,
                         backdropFilter: 'blur(8px)',
                         borderRadius: '12px',
-                        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-                        border: '1px solid rgba(255,255,255,0.1)'
+                        boxShadow: tooltipShadow,
+                        border: `1px solid ${tooltipBorder}`
                       }}
                       formatter={(value: any, name: any) => [formatMoney(Number(value)), name]}
                     />
-                    <Legend wrapperStyle={{ paddingTop: 6 }} iconType="circle" />
-                    <Bar dataKey="income" name={t('graph.income')} fill="rgba(0, 242, 255, 0.55)" radius={[8, 8, 0, 0]} />
-                    <Bar dataKey="expense" name={t('graph.expense')} fill="rgba(255, 0, 85, 0.55)" radius={[8, 8, 0, 0]} />
-                    <Line type="monotone" dataKey="net" name={t('graph.net')} stroke="rgba(255,255,255,0.65)" strokeWidth={2} dot={false} />
+                    <Legend wrapperStyle={{ paddingTop: 6, color: "var(--text)" }} iconType="circle" />
+                    <Bar dataKey="income" name={t('graph.income')} fill={monthIncomeFill} radius={[8, 8, 0, 0]} />
+                    <Bar dataKey="expense" name={t('graph.expense')} fill={monthExpenseFill} radius={[8, 8, 0, 0]} />
+                    <Line type="monotone" dataKey="net" name={t('graph.net')} stroke={netStroke} strokeWidth={2} dot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

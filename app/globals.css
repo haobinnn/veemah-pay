@@ -6,6 +6,7 @@
   --primary: #2386c1;
   --primary-600: #2a93cc;
   --card: #0f1628;
+  --card-surface: linear-gradient(187deg, rgb(13 28 48) 0%, rgb(255 255 255 / 0%) 35%, rgb(255 255 255 / 0%) 50%, rgb(21 38 63) 100%);
   --border: #243046;
   --success: #4caf50;
   --danger: #ff6b6b;
@@ -23,6 +24,7 @@
   --primary: #0a6bff;
   --primary-600: #0758d1;
   --card: #ffffff;
+  --card-surface: var(--card);
   --border: #e5e8ef;
   --success: #2e7d32;
   --danger: #b00020;
@@ -39,6 +41,7 @@
   --primary: #2386c1;
   --primary-600: #2a93cc;
   --card: #0f1628;
+  --card-surface: linear-gradient(187deg, rgb(13 28 48) 0%, rgb(255 255 255 / 0%) 35%, rgb(255 255 255 / 0%) 50%, rgb(21 38 63) 100%);
   --border: #243046;
   --success: #4caf50;
   --danger: #ff6b6b;
@@ -131,7 +134,7 @@ input, select { width: 100%; border: 1px solid var(--border); border-radius: 10p
 .selected { background: var(--table-selected) !important; }
 
 .actions-grid { display: flex; flex-wrap: wrap; gap: 16px; }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: grid; gap: 10px; align-items: start; text-align: left; flex: 1 1 15em; background: linear-gradient(187deg, rgb(13 28 48) 0%, rgb(255 255 255 / 0%) 35%, rgb(255 255 255 / 0%) 50%, rgb(21 38 63) 100%)}
+.card { background: var(--card-surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: grid; gap: 10px; align-items: start; text-align: left; flex: 1 1 15em; }
 .card h2, .card h3 { margin: 0 0 8px 0; font-size: 16px; }
 .muted { color: var(--muted); }
 .cards { display: grid; grid-template-columns: repeat(6,1fr); gap: 14px; }
