@@ -6,6 +6,8 @@ import { SpendingGraph } from '@/components/dashboard/SpendingGraph';
 import { useLanguage } from '@/components/ui/LanguageProvider';
 import { QRModal } from '@/components/ui/QRModal';
 import { MoneyDisplay, PositiveMoney } from '@/components/ui/MoneyDisplay';
+import { fetchTransactions as fetchTransactionsJava, createTransaction, config } from '@/lib/java-api';
+import { JavaServerTest } from '@/components/ui/JavaServerTest';
 
 type Account = { account_number: string; name: string; balance: number; status: string };
 type Transaction = { id: number; type: string; status: string; amount: number; account_number?: string; target_account?: string | null; note?: string | null; created_at?: string };
@@ -82,13 +84,10 @@ export default function UserPage() {
   const fetchTransactions = useCallback(async (acc: string) => {
     try {
       setRefreshing(true);
-      const res = await fetch(`/api/transactions?account=${encodeURIComponent(acc)}&limit=50`);
-      const data: any = await readJson(res);
+      const data = await fetchTransactionsJava({ account: acc, limit: 50 });
       const txs = Array.isArray(data?.transactions) ? data.transactions : [];
       setTransactions(txs);
-      if (!res.ok) {
-        setError(data?.error || t('user.operation_failed'));
-      }
+      setError(null);
     } catch (e: any) {
       setTransactions([]);
       setError(e?.message || t('user.operation_failed'));
@@ -111,6 +110,8 @@ export default function UserPage() {
   }, [fetchMe, fetchTransactions, me, t]);
 
   useEffect(() => {
+    // Log Java API configuration for debugging
+    config.logConfig();
     fetchMe().catch(() => undefined);
   }, [fetchMe]);
 
@@ -186,36 +187,21 @@ export default function UserPage() {
     try {
       let opOk = false;
       try {
-        const body: any = { type, source_account: me.account_number, amount: amt };
-        if (type === "withdraw") body.pin = wdPin;
+        const transactionData = {
+          type: type as 'deposit' | 'withdraw',
+          source_account: me.account_number,
+          amount: amt,
+          note: `${type.charAt(0).toUpperCase() + type.slice(1)} operation`
+        };
 
-        const res = await fetch("/api/transactions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
-        });
-        const data: any = await readJson(res);
-        if (!res.ok) {
-          if (res.status >= 500 || String(data?.error || "").toLowerCase().includes("transaction")) {
-            const fallback = await fetch(`/api/accounts/${me.account_number}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ op: type, amount: amt }),
-            });
-            const fdata: any = await readJson(fallback);
-            if (!fallback.ok) {
-              setError(fdata?.error || t('user.operation_failed'));
-              return;
-            }
-            opOk = true;
-          } else {
-            setError(data?.error || t('user.operation_failed'));
-            return;
-          }
-        } else {
+        const result = await createTransaction(transactionData);
+        if (result.success) {
           opOk = true;
+        } else {
+          throw new Error(result.message || 'Transaction failed');
         }
       } catch (e: any) {
+        // Fallback to account API for backward compatibility
         try {
           const fallback = await fetch(`/api/accounts/${me.account_number}`, {
             method: "PATCH",
@@ -271,37 +257,22 @@ export default function UserPage() {
 
       let opOk = false;
       try {
-        const res = await fetch("/api/transactions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "transfer", source_account: me.account_number, target_account: txTarget, amount: amt, pin: txPin })
-        });
-        const data: any = await readJson(res);
-        if (!res.ok) {
-          if (res.status >= 500 || String(data?.error || "").toLowerCase().includes("transaction")) {
-            let w = await fetch(`/api/accounts/${me.account_number}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ op: "withdraw", amount: amt }),
-            });
-            let wdata: any = await readJson(w);
-            if (!w.ok) { setError(wdata?.error || t('user.transfer_failed')); return; }
-            let d = await fetch(`/api/accounts/${txTarget}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ op: "deposit", amount: amt }),
-            });
-            let ddata: any = await readJson(d);
-            if (!d.ok) { setError(ddata?.error || t('user.transfer_failed')); return; }
-            opOk = true;
-          } else {
-            setError(data?.error || t('user.transfer_failed'));
-            return;
-          }
-        } else {
+        const transactionData = {
+          type: 'transfer' as const,
+          source_account: me.account_number,
+          target_account: txTarget,
+          amount: amt,
+          note: `Transfer to ${verification.maskedName || txTarget}`
+        };
+
+        const result = await createTransaction(transactionData);
+        if (result.success) {
           opOk = true;
+        } else {
+          throw new Error(result.message || 'Transfer failed');
         }
       } catch (e: any) {
+        // Fallback to manual account operations for backward compatibility
         try {
           let w = await fetch(`/api/accounts/${me.account_number}`, {
             method: "PATCH",
@@ -309,17 +280,17 @@ export default function UserPage() {
             body: JSON.stringify({ op: "withdraw", amount: amt }),
           });
           let wdata: any = await readJson(w);
-          if (!w.ok) { setError(wdata?.error || (e?.message || t('user.transfer_failed'))); return; }
+          if (!w.ok) { setError(wdata?.error || t('user.transfer_failed')); return; }
           let d = await fetch(`/api/accounts/${txTarget}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ op: "deposit", amount: amt }),
           });
           let ddata: any = await readJson(d);
-          if (!d.ok) { setError(ddata?.error || (e?.message || t('user.transfer_failed'))); return; }
+          if (!d.ok) { setError(ddata?.error || t('user.transfer_failed')); return; }
           opOk = true;
         } catch (err: any) {
-          setError(err?.message || (e?.message || t('user.transfer_failed')));
+          setError(err?.message || t('user.transfer_failed'));
           return;
         }
       }
@@ -357,6 +328,7 @@ export default function UserPage() {
   return (
     <main>
       <Header />
+      <JavaServerTest />
       <section className="quick-actions">
         <div className="inner container" style={{ display: "grid", gap: 16 }}>
           {me && (
