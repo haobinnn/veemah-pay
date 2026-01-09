@@ -3,6 +3,8 @@ package modules.server;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import modules.database.DatabaseManager;
+import modules.gui.Logger;
+import modules.utils.C;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.sql.SQLException;
@@ -15,6 +17,8 @@ import java.sql.Statement;
 public class HealthCheckHandler implements HttpHandler {
     @Override
     public void handle(HttpExchange exchange) throws IOException {
+        Logger.log("[HEALTH] Health check requested", C.N.CYAN);
+        
         // Set CORS headers for all requests
         setCorsHeaders(exchange);
         
@@ -44,12 +48,16 @@ public class HealthCheckHandler implements HttpHandler {
             os.write(response.getBytes());
             os.close();
             
+            Logger.log("   [HEALTH SUCCESS] System healthy - database connected", C.N.GREEN);
+            
         } catch (SQLException e) {
             String errorResponse = "{\"status\": \"unhealthy\", \"error\": \"Database connection failed\"}";
             exchange.sendResponseHeaders(500, errorResponse.length());
             OutputStream os = exchange.getResponseBody();
             os.write(errorResponse.getBytes());
             os.close();
+            
+            Logger.log("   [HEALTH ERROR] Database connection failed: " + e.getMessage(), C.N.RED);
         }
     }
     

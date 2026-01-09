@@ -3,6 +3,8 @@ package modules.server;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpExchange;
 import modules.database.DatabaseManager;
+import modules.gui.Logger;
+import modules.utils.C;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.InputStream;
@@ -33,9 +35,10 @@ public class TransactionHandler implements HttpHandler {
         try {
             String method = exchange.getRequestMethod();
             String path = exchange.getRequestURI().getPath();
+            String queryString = exchange.getRequestURI().getQuery();
             
             // Log incoming request
-            System.out.println(">> " + method + " " + path + " from " + exchange.getRemoteAddress());
+            Logger.log("[" + method + "] " + path + (queryString != null ? "?" + queryString : ""), C.N.BLUE);
             
             switch (method) {
                 case "GET":
@@ -51,10 +54,12 @@ public class TransactionHandler implements HttpHandler {
                     handleDelete(exchange, path);
                     break;
                 default:
+                    Logger.log("   [ERROR] Method not allowed: " + method, C.N.RED);
                     sendErrorResponse(exchange, 405, "Method not allowed: " + method);
             }
             
         } catch (Exception e) {
+            Logger.log("   [CRITICAL ERROR] " + e.getMessage(), C.N.RED);
             System.err.println("Error handling request: " + e.getMessage());
             e.printStackTrace();
             sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage());
@@ -71,17 +76,20 @@ public class TransactionHandler implements HttpHandler {
         
         if (pathParts.length == 4 && !pathParts[3].isEmpty()) {
             // Get specific transaction by ID
+            Logger.log("   [GET] Fetching transaction ID: " + pathParts[3], C.N.YELLOW);
             getTransactionById(exchange, pathParts[3]);
             return;
         }
-        
+
         // Get transactions with filters
         String account = queryParams.get("account");
         if (account == null || account.isEmpty()) {
+            Logger.log("   [GET ERROR] Missing account parameter", C.N.RED);
             sendErrorResponse(exchange, 400, "account parameter is required");
             return;
         }
-        
+
+        Logger.log("   [GET] Fetching transactions for account: " + account, C.N.GREEN);
         getAllTransactions(exchange, account, queryParams);
     }
     
@@ -99,6 +107,7 @@ public class TransactionHandler implements HttpHandler {
         }
         
         if (availableColumns.isEmpty()) {
+            Logger.log("   [GET] No transaction columns found - returning empty list", C.N.YELLOW);
             Map<String, Object> response = new HashMap<>();
             response.put("transactions", new ArrayList<>());
             sendJsonResponse(exchange, 200, response);
@@ -213,6 +222,7 @@ public class TransactionHandler implements HttpHandler {
             response.put("transactions", transactions);
             response.put("next_cursor", null); // Simplified for now
             
+            Logger.log("   [GET SUCCESS] Returned " + transactions.size() + " transactions for " + accountNumber, C.N.GREEN);
             sendJsonResponse(exchange, 200, response);
         }
     }
@@ -230,8 +240,10 @@ public class TransactionHandler implements HttpHandler {
                 response.put("success", true);
                 response.put("data", transaction);
                 
+                Logger.log("   [GET SUCCESS] Found transaction ID: " + id, C.N.GREEN);
                 sendJsonResponse(exchange, 200, response);
             } else {
+                Logger.log("   [GET ERROR] Transaction not found: " + id, C.N.RED);
                 sendErrorResponse(exchange, 404, "Transaction not found");
             }
         }
@@ -240,24 +252,26 @@ public class TransactionHandler implements HttpHandler {
     // POST /api/transactions - Create new transaction
     private void handlePost(HttpExchange exchange) throws IOException, SQLException {
         String requestBody = readRequestBody(exchange);
-        Map<String, Object> data = parseJson(requestBody);
+        Logger.log("   [POST] Creating new transaction", C.N.BLUE);
         
+        Map<String, Object> data = parseJson(requestBody);
+
         // Validate required fields
         String[] requiredFields = {"source_account", "amount", "type"};
         for (String field : requiredFields) {
             if (!data.containsKey(field) || data.get(field) == null) {
+                Logger.log("   [POST ERROR] Missing required field: " + field, C.N.RED);
                 sendErrorResponse(exchange, 400, "Missing required field: " + field);
                 return;
             }
         }
-        
+
         String type = (String) data.get("type");
         if (type.equals("transfer") && !data.containsKey("target_account")) {
+            Logger.log("   [POST ERROR] target_account required for transfers", C.N.RED);
             sendErrorResponse(exchange, 400, "target_account is required for transfers");
             return;
-        }
-        
-        // Get available columns for dynamic insert
+        }        // Get available columns for dynamic insert
         String colQuery = "SELECT column_name FROM information_schema.columns " +
                          "WHERE table_schema = 'public' AND table_name = 'transactions'";
         
@@ -329,12 +343,18 @@ public class TransactionHandler implements HttpHandler {
             ResultSet rs = stmt.executeQuery();
             
             if (rs.next()) {
+                
+                
                 Map<String, Object> transaction = resultSetToMap(rs);
                 Map<String, Object> response = new HashMap<>();
                 response.put("success", true);
                 response.put("transaction", transaction);
                 response.put("message", "Transaction created successfully");
-                
+
+                if (data.containsKey("source_account")) {
+                    Logger.log("   [POST SUCCESS] New Transaction - From: " + data.get("source_account") + 
+                               " | Amount: " + data.get("amount") + " | Type: " + data.get("type"), C.N.GREEN);
+                }
                 sendJsonResponse(exchange, 201, response);
             }
         }
@@ -344,15 +364,16 @@ public class TransactionHandler implements HttpHandler {
     private void handlePut(HttpExchange exchange, String path) throws IOException, SQLException {
         String[] pathParts = path.split("/");
         if (pathParts.length != 4) {
+            Logger.log("   [PUT ERROR] Invalid path format: " + path, C.N.RED);
             sendErrorResponse(exchange, 400, "Invalid path for update: " + path);
             return;
         }
-        
+
         String transactionId = pathParts[3];
-        String requestBody = readRequestBody(exchange);
-        Map<String, Object> data = parseJson(requestBody);
+        Logger.log("   [PUT] Updating transaction ID: " + transactionId, C.N.BLUE);
         
-        List<String> setClauses = new ArrayList<>();
+        String requestBody = readRequestBody(exchange);
+        Map<String, Object> data = parseJson(requestBody);        List<String> setClauses = new ArrayList<>();
         List<Object> params = new ArrayList<>();
         
         // Build dynamic update
@@ -366,6 +387,7 @@ public class TransactionHandler implements HttpHandler {
         }
         
         if (setClauses.isEmpty()) {
+            Logger.log("   [PUT ERROR] No valid fields to update for transaction " + transactionId, C.N.RED);
             sendErrorResponse(exchange, 400, "No valid fields to update");
             return;
         }
@@ -389,8 +411,10 @@ public class TransactionHandler implements HttpHandler {
                 response.put("transaction", transaction);
                 response.put("message", "Transaction updated successfully");
                 
+                Logger.log("   [PUT SUCCESS] Transaction " + transactionId + " updated successfully", C.N.GREEN);
                 sendJsonResponse(exchange, 200, response);
             } else {
+                Logger.log("   [PUT ERROR] Transaction not found: " + transactionId, C.N.RED);
                 sendErrorResponse(exchange, 404, "Transaction not found");
             }
         }
@@ -400,16 +424,16 @@ public class TransactionHandler implements HttpHandler {
     private void handleDelete(HttpExchange exchange, String path) throws IOException, SQLException {
         String[] pathParts = path.split("/");
         if (pathParts.length != 4) {
+            Logger.log("   [DELETE ERROR] Invalid path format: " + path, C.N.RED);
             sendErrorResponse(exchange, 400, "Invalid path for delete: " + path);
             return;
         }
-        
+
         String transactionId = pathParts[3];
-        
+        Logger.log("   [DELETE] Cancelling transaction ID: " + transactionId, C.N.YELLOW);
+
         // Soft delete by setting status to 'Cancelled'
-        String sql = "UPDATE transactions SET status = 'Cancelled' WHERE id = ?";
-        
-        try (PreparedStatement stmt = DatabaseManager.getConnection().prepareStatement(sql)) {
+        String sql = "UPDATE transactions SET status = 'Cancelled' WHERE id = ?";        try (PreparedStatement stmt = DatabaseManager.getConnection().prepareStatement(sql)) {
             stmt.setInt(1, Integer.parseInt(transactionId));
             int rowsAffected = stmt.executeUpdate();
             
@@ -418,8 +442,10 @@ public class TransactionHandler implements HttpHandler {
                 response.put("success", true);
                 response.put("message", "Transaction cancelled successfully");
                 
+                Logger.log("   [DELETE SUCCESS] Transaction " + transactionId + " cancelled successfully", C.N.GREEN);
                 sendJsonResponse(exchange, 200, response);
             } else {
+                Logger.log("   [DELETE ERROR] Transaction not found: " + transactionId, C.N.RED);
                 sendErrorResponse(exchange, 404, "Transaction not found");
             }
         }

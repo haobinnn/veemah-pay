@@ -21,6 +21,8 @@ public class ServerManager {
      * Start the HTTP server
      */
     public static void startServer() throws IOException, SQLException {
+        Logger.log("[SERVER] Initializing VeemahPay Transaction Server...", C.N.MAGENTA);
+        
         // Initialize database connection
         DatabaseManager.initializeDatabase();
         
@@ -53,11 +55,14 @@ public class ServerManager {
         httpServer.createContext("/api/transactions", new TransactionHandler());
         httpServer.createContext("/health", new HealthCheckHandler());
         
+        Logger.log("[SERVER] Registered API endpoints: /api/transactions, /health", C.N.CYAN);
+        
         // Set thread pool executor
         httpServer.setExecutor(Executors.newFixedThreadPool(10));
         
         // Start the server
         httpServer.start();
+        Logger.log("[SERVER] HTTP server started successfully on port " + PORT, C.N.GREEN);
     }
     
     /**

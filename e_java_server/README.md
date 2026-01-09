@@ -11,13 +11,7 @@ cd e_java_server
 ./run-server.sh
 ```
 
-### 2. Start ngrok Tunnel
-
-```bash
-ngrok http --domain=sasha-nonreliable-thunderingly.ngrok-free.dev 8080
-```
-
-### 3. Start dev Environment
+### 2. Start dev Environment
 
 ```bash
 npm run dev

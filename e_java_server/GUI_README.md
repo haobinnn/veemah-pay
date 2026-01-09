@@ -38,19 +38,7 @@ This GUI provides a user-friendly interface to manage the VeemahPay Transaction 
 
 #### Option 1: Direct GUI Launch
 ```bash
-./launch-gui.sh
-```
-
-#### Option 2: Via Run Script
-```bash
-./run-server.sh --gui
-# or
-./run-server.sh -g
-```
-
-#### Option 3: Direct Java Command
-```bash
-java -cp ".:postgresql-42.7.4.jar" ServerGUI
+./run-server.sh
 ```
 
 ### 🔧 **GUI Components Showcase**
