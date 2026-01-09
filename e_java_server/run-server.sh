@@ -46,7 +46,7 @@ stop_all() {
   green "All processes stopped"
 }
 
-# VeemahPay Transaction Server Build & Run Script
+# VeemahPay Transaction Server Build & Run Script (GUI Mode Only)
 yellow "================================================"
 white  "         VeemahPay Transaction Server"
 yellow "================================================"
@@ -73,9 +73,9 @@ else
     green "PostgreSQL driver found"
 fi
 
-# Compile Java files
-yellow "Compiling Java server..."
-javac -cp ".:$POSTGRES_JAR" *.java
+# Compile Java files (including modules)
+yellow "Compiling Java server with modular structure..."
+javac -cp ".:$POSTGRES_JAR" *.java modules/*/*.java
 
 if [ $? -eq 0 ]; then
     green "Compilation successful\n"
@@ -85,24 +85,11 @@ else
 fi
 
 # Start server
-green "Starting VeemahPay Transaction Server...\n"
-nohup java -cp ".:$POSTGRES_JAR" Server > server.log 2>&1 &
-JAVA_PID=$!
-sleep 2
-green "VeemahPay server started (PID: $JAVA_PID, log: server.log)"
+green "Starting VeemahPay Transaction Server in GUI mode...\n"
 
-# Start ngrok tunnel
-yellow "Starting ngrok tunnel..."
-nohup ngrok http --domain=sasha-nonreliable-thunderingly.ngrok-free.dev 8081 > ngrok.log 2>&1 &
-NGROK_PID=$!
-sleep 2
-green "ngrok started (PID: $NGROK_PID, log: ngrok.log)\n"
-
-# Handle Ctrl-C / termination
-trap 'stop_all; exit' INT TERM
-
-white "Press ENTER to stop the server and ngrok..."
-read -r
+# Always start in GUI mode
+green "Starting server with graphical interface..."
+java -cp ".:$POSTGRES_JAR" ServerGUI
 
 # User pressed enter — stop both
 stop_all

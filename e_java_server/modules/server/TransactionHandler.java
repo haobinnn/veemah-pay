@@ -1,5 +1,8 @@
+package modules.server;
+
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpExchange;
+import modules.database.DatabaseManager;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.InputStream;
@@ -88,7 +91,7 @@ public class TransactionHandler implements HttpHandler {
                          "WHERE table_schema = 'public' AND table_name = 'transactions'";
         
         Set<String> availableColumns = new HashSet<>();
-        try (PreparedStatement stmt = Server.getConnection().prepareStatement(colQuery)) {
+        try (PreparedStatement stmt = DatabaseManager.getConnection().prepareStatement(colQuery)) {
             ResultSet rs = stmt.executeQuery();
             while (rs.next()) {
                 availableColumns.add(rs.getString("column_name"));
@@ -179,7 +182,7 @@ public class TransactionHandler implements HttpHandler {
                     " FROM transactions WHERE " + whereClause + 
                     " " + orderBy + " LIMIT " + limit;
         
-        try (PreparedStatement stmt = Server.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement stmt = DatabaseManager.getConnection().prepareStatement(sql)) {
             for (int i = 0; i < queryParams.size(); i++) {
                 stmt.setObject(i + 1, queryParams.get(i));
             }
@@ -217,7 +220,7 @@ public class TransactionHandler implements HttpHandler {
     private void getTransactionById(HttpExchange exchange, String id) throws IOException, SQLException {
         String sql = "SELECT * FROM transactions WHERE id = ?";
         
-        try (PreparedStatement stmt = Server.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement stmt = DatabaseManager.getConnection().prepareStatement(sql)) {
             stmt.setInt(1, Integer.parseInt(id));
             ResultSet rs = stmt.executeQuery();
             
@@ -259,7 +262,7 @@ public class TransactionHandler implements HttpHandler {
                          "WHERE table_schema = 'public' AND table_name = 'transactions'";
         
         Set<String> availableColumns = new HashSet<>();
-        try (PreparedStatement stmt = Server.getConnection().prepareStatement(colQuery)) {
+        try (PreparedStatement stmt = DatabaseManager.getConnection().prepareStatement(colQuery)) {
             ResultSet rs = stmt.executeQuery();
             while (rs.next()) {
                 availableColumns.add(rs.getString("column_name"));
@@ -318,7 +321,7 @@ public class TransactionHandler implements HttpHandler {
         String sql = "INSERT INTO transactions (" + String.join(", ", insertCols) + 
                     ") VALUES (" + String.join(", ", valuesSql) + ") RETURNING *";
         
-        try (PreparedStatement stmt = Server.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement stmt = DatabaseManager.getConnection().prepareStatement(sql)) {
             for (int i = 0; i < params.size(); i++) {
                 stmt.setObject(i + 1, params.get(i));
             }
@@ -372,7 +375,7 @@ public class TransactionHandler implements HttpHandler {
         String sql = "UPDATE transactions SET " + String.join(", ", setClauses) + 
                     " WHERE id = ? RETURNING *";
         
-        try (PreparedStatement stmt = Server.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement stmt = DatabaseManager.getConnection().prepareStatement(sql)) {
             for (int i = 0; i < params.size(); i++) {
                 stmt.setObject(i + 1, params.get(i));
             }
@@ -406,7 +409,7 @@ public class TransactionHandler implements HttpHandler {
         // Soft delete by setting status to 'Cancelled'
         String sql = "UPDATE transactions SET status = 'Cancelled' WHERE id = ?";
         
-        try (PreparedStatement stmt = Server.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement stmt = DatabaseManager.getConnection().prepareStatement(sql)) {
             stmt.setInt(1, Integer.parseInt(transactionId));
             int rowsAffected = stmt.executeUpdate();
             

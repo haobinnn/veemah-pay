@@ -1,10 +1,13 @@
+package modules.utils;
+
 public class C {
-  enum N {
+  public enum N {
     RESET("\u001B[0m"),
     RED("\u001B[31m"),
     GREEN("\u001B[32m"),
     YELLOW("\u001B[33m"),
-    BLUE("\u001B[34m");
+    BLUE("\u001B[34m"),
+    WHITE("\u001B[37m");
 
     private final String code;
 
