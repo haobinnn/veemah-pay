@@ -53,9 +53,12 @@ public class Server {
             // Get database URL from environment variable
             String databaseUrl = System.getenv("DATABASE_URL");
             if (databaseUrl == null) {
-                throw new RuntimeException(" DATABASE_URL environment variable not set");
+                throw new RuntimeException("DATABASE_URL environment variable not set");
             }
 
+            // Remove surrounding quotes if present
+            databaseUrl = databaseUrl.replaceAll("^'|'$", "");
+            
             // Parse DATABASE_URL to extract connection details securely
             String cleanUrl = databaseUrl.replace("postgresql://", "");
             String[] parts = cleanUrl.split("@");
@@ -81,6 +84,10 @@ public class Server {
             props.setProperty("password", password);
             props.setProperty("ssl", "true");
             props.setProperty("sslmode", "require");
+
+            // DEBUG: Print the actual loaded driver version
+Driver driver = DriverManager.getDriver("jdbc:postgresql:");
+C.println("DEBUG: Loaded Driver Version: " + driver.getMajorVersion() + "." + driver.getMinorVersion(), C.N.YELLOW);
 
             dbConnection = DriverManager.getConnection(jdbcUrl, props);
             
