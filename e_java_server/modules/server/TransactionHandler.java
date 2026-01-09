@@ -253,7 +253,7 @@ public class TransactionHandler implements HttpHandler {
     private void handlePost(HttpExchange exchange) throws IOException, SQLException {
         String requestBody = readRequestBody(exchange);
         Logger.log("   [POST] Creating new transaction", C.N.BLUE);
-        
+
         Map<String, Object> data = parseJson(requestBody);
 
         // Validate required fields
@@ -271,92 +271,228 @@ public class TransactionHandler implements HttpHandler {
             Logger.log("   [POST ERROR] target_account required for transfers", C.N.RED);
             sendErrorResponse(exchange, 400, "target_account is required for transfers");
             return;
-        }        // Get available columns for dynamic insert
-        String colQuery = "SELECT column_name FROM information_schema.columns " +
-                         "WHERE table_schema = 'public' AND table_name = 'transactions'";
-        
-        Set<String> availableColumns = new HashSet<>();
-        try (PreparedStatement stmt = DatabaseManager.getConnection().prepareStatement(colQuery)) {
-            ResultSet rs = stmt.executeQuery();
-            while (rs.next()) {
-                availableColumns.add(rs.getString("column_name"));
-            }
         }
-        
-        // Build dynamic INSERT
-        List<String> insertCols = new ArrayList<>();
-        List<String> valuesSql = new ArrayList<>();
-        List<Object> params = new ArrayList<>();
-        
-        // Required fields
-        if (availableColumns.contains("account_number")) {
-            insertCols.add("account_number");
-            valuesSql.add("?");
-            params.add(data.get("source_account"));
-        }
-        
-        if (availableColumns.contains("amount")) {
-            insertCols.add("amount");
-            valuesSql.add("?");
-            params.add(new BigDecimal(data.get("amount").toString()));
-        }
-        
-        if (availableColumns.contains("type")) {
-            insertCols.add("type");
-            valuesSql.add("?");
-            params.add(data.get("type"));
-        }
-        
-        // Optional fields
-        if (data.containsKey("target_account") && availableColumns.contains("target_account")) {
-            insertCols.add("target_account");
-            valuesSql.add("?");
-            params.add(data.get("target_account"));
-        }
-        
-        if (data.containsKey("note") && availableColumns.contains("note")) {
-            insertCols.add("note");
-            valuesSql.add("?");
-            params.add(data.get("note"));
-        }
-        
-        if (availableColumns.contains("status")) {
-            insertCols.add("status");
-            valuesSql.add("?");
-            params.add(data.getOrDefault("status", "Completed"));
-        }
-        
-        if (availableColumns.contains("created_by")) {
-            insertCols.add("created_by");
-            valuesSql.add("?");
-            params.add(data.getOrDefault("created_by", data.get("source_account")));
-        }
-        
-        String sql = "INSERT INTO transactions (" + String.join(", ", insertCols) + 
-                    ") VALUES (" + String.join(", ", valuesSql) + ") RETURNING *";
-        
-        try (PreparedStatement stmt = DatabaseManager.getConnection().prepareStatement(sql)) {
-            for (int i = 0; i < params.size(); i++) {
-                stmt.setObject(i + 1, params.get(i));
-            }
-            
-            ResultSet rs = stmt.executeQuery();
-            
-            if (rs.next()) {
-                
-                
-                Map<String, Object> transaction = resultSetToMap(rs);
-                Map<String, Object> response = new HashMap<>();
-                response.put("success", true);
-                response.put("transaction", transaction);
-                response.put("message", "Transaction created successfully");
 
-                if (data.containsKey("source_account")) {
-                    Logger.log("   [POST SUCCESS] New Transaction - From: " + data.get("source_account") + 
-                               " | Amount: " + data.get("amount") + " | Type: " + data.get("type"), C.N.GREEN);
-                }
-                sendJsonResponse(exchange, 201, response);
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(data.get("amount").toString());
+        } catch (Exception e) {
+            sendErrorResponse(exchange, 400, "Invalid amount");
+            return;
+        }
+
+        Connection conn = DatabaseManager.getConnection();
+        boolean restoreAuto = true;
+        try {
+            restoreAuto = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+
+            // Check accounts table balance column
+            boolean hasAccountBalance = false;
+            try (PreparedStatement colStmt = conn.prepareStatement(
+                    "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='accounts' AND column_name='balance'")) {
+                ResultSet crs = colStmt.executeQuery();
+                hasAccountBalance = crs.next();
             }
+
+            String sourceAccount = String.valueOf(data.get("source_account"));
+            String targetAccount = data.containsKey("target_account") ? String.valueOf(data.get("target_account")) : null;
+
+            BigDecimal sourceBalanceBefore = null;
+            BigDecimal sourceBalanceAfter = null;
+            BigDecimal targetBalanceBefore = null;
+            BigDecimal targetBalanceAfter = null;
+
+            // If balances are tracked, lock and update rows
+            if (hasAccountBalance) {
+                // Lock source
+                String sel = "SELECT balance FROM accounts WHERE account_number = ? FOR UPDATE";
+                try (PreparedStatement sstmt = conn.prepareStatement(sel)) {
+                    sstmt.setString(1, sourceAccount);
+                    ResultSet srs = sstmt.executeQuery();
+                    if (!srs.next()) {
+                        conn.rollback();
+                        sendErrorResponse(exchange, 404, "Source account not found");
+                        return;
+                    }
+                    sourceBalanceBefore = srs.getBigDecimal("balance");
+                }
+
+                if (type.equals("withdraw") || type.equals("transfer")) {
+                    BigDecimal avail = sourceBalanceBefore == null ? BigDecimal.ZERO : sourceBalanceBefore;
+                    if (avail.compareTo(amount) < 0) {
+                        conn.rollback();
+                        sendErrorResponse(exchange, 400, "Insufficient funds");
+                        return;
+                    }
+                }
+
+                if (type.equals("transfer") && targetAccount != null) {
+                    // Lock target
+                    String tsel = "SELECT balance FROM accounts WHERE account_number = ? FOR UPDATE";
+                    try (PreparedStatement tstmt = conn.prepareStatement(tsel)) {
+                        tstmt.setString(1, targetAccount);
+                        ResultSet trs = tstmt.executeQuery();
+                        if (!trs.next()) {
+                            conn.rollback();
+                            sendErrorResponse(exchange, 404, "Target account not found");
+                            return;
+                        }
+                        targetBalanceBefore = trs.getBigDecimal("balance");
+                    }
+                }
+
+                // Apply balance changes
+                if (type.equals("deposit")) {
+                    sourceBalanceAfter = (sourceBalanceBefore == null ? BigDecimal.ZERO : sourceBalanceBefore).add(amount);
+                    try (PreparedStatement up = conn.prepareStatement("UPDATE accounts SET balance = ? WHERE account_number = ?")) {
+                        up.setBigDecimal(1, sourceBalanceAfter);
+                        up.setString(2, sourceAccount);
+                        up.executeUpdate();
+                    }
+                } else if (type.equals("withdraw")) {
+                    sourceBalanceAfter = (sourceBalanceBefore == null ? BigDecimal.ZERO : sourceBalanceBefore).subtract(amount);
+                    try (PreparedStatement up = conn.prepareStatement("UPDATE accounts SET balance = ? WHERE account_number = ?")) {
+                        up.setBigDecimal(1, sourceBalanceAfter);
+                        up.setString(2, sourceAccount);
+                        up.executeUpdate();
+                    }
+                } else if (type.equals("transfer") && targetAccount != null) {
+                    sourceBalanceAfter = (sourceBalanceBefore == null ? BigDecimal.ZERO : sourceBalanceBefore).subtract(amount);
+                    targetBalanceAfter = (targetBalanceBefore == null ? BigDecimal.ZERO : targetBalanceBefore).add(amount);
+
+                    try (PreparedStatement up1 = conn.prepareStatement("UPDATE accounts SET balance = ? WHERE account_number = ?")) {
+                        up1.setBigDecimal(1, sourceBalanceAfter);
+                        up1.setString(2, sourceAccount);
+                        up1.executeUpdate();
+                    }
+                    try (PreparedStatement up2 = conn.prepareStatement("UPDATE accounts SET balance = ? WHERE account_number = ?")) {
+                        up2.setBigDecimal(1, targetBalanceAfter);
+                        up2.setString(2, targetAccount);
+                        up2.executeUpdate();
+                    }
+                }
+            }
+
+            // Now insert transaction row (same dynamic insert as before)
+            String colQuery = "SELECT column_name FROM information_schema.columns " +
+                         "WHERE table_schema = 'public' AND table_name = 'transactions'";
+            Set<String> availableColumns = new HashSet<>();
+            try (PreparedStatement stmt = conn.prepareStatement(colQuery)) {
+                ResultSet rs = stmt.executeQuery();
+                while (rs.next()) {
+                    availableColumns.add(rs.getString("column_name"));
+                }
+            }
+
+            List<String> insertCols = new ArrayList<>();
+            List<String> valuesSql = new ArrayList<>();
+            List<Object> params = new ArrayList<>();
+
+            if (availableColumns.contains("account_number")) {
+                insertCols.add("account_number");
+                valuesSql.add("?");
+                params.add(sourceAccount);
+            }
+            if (availableColumns.contains("amount")) {
+                insertCols.add("amount");
+                valuesSql.add("?");
+                params.add(amount);
+            }
+            if (availableColumns.contains("type")) {
+                insertCols.add("type");
+                valuesSql.add("?");
+                params.add(type);
+            }
+            if (data.containsKey("target_account") && availableColumns.contains("target_account")) {
+                insertCols.add("target_account");
+                valuesSql.add("?");
+                params.add(targetAccount);
+            }
+            if (data.containsKey("note") && availableColumns.contains("note")) {
+                insertCols.add("note");
+                valuesSql.add("?");
+                params.add(data.get("note"));
+            }
+            if (availableColumns.contains("status")) {
+                insertCols.add("status");
+                valuesSql.add("?");
+                params.add(data.getOrDefault("status", "Completed"));
+            }
+            if (availableColumns.contains("created_by")) {
+                insertCols.add("created_by");
+                valuesSql.add("?");
+                params.add(data.getOrDefault("created_by", sourceAccount));
+            }
+
+            // Optionally include balance snapshot columns if present
+            if (availableColumns.contains("source_balance_before")) {
+                insertCols.add("source_balance_before");
+                valuesSql.add("?");
+                params.add(sourceBalanceBefore);
+            }
+            if (availableColumns.contains("source_balance_after")) {
+                insertCols.add("source_balance_after");
+                valuesSql.add("?");
+                params.add(sourceBalanceAfter);
+            }
+            if (availableColumns.contains("target_balance_before") && targetBalanceBefore != null) {
+                insertCols.add("target_balance_before");
+                valuesSql.add("?");
+                params.add(targetBalanceBefore);
+            }
+            if (availableColumns.contains("target_balance_after") && targetBalanceAfter != null) {
+                insertCols.add("target_balance_after");
+                valuesSql.add("?");
+                params.add(targetBalanceAfter);
+            }
+
+            String sql = "INSERT INTO transactions (" + String.join(", ", insertCols) + 
+                    ") VALUES (" + String.join(", ", valuesSql) + ") RETURNING *";
+
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                for (int i = 0; i < params.size(); i++) {
+                    Object p = params.get(i);
+                    if (p instanceof BigDecimal) stmt.setBigDecimal(i + 1, (BigDecimal) p);
+                    else stmt.setObject(i + 1, p);
+                }
+
+                ResultSet rs = stmt.executeQuery();
+                if (rs.next()) {
+                    Map<String, Object> transaction = resultSetToMap(rs);
+
+                    // Attach balances to response if available
+                    if (hasAccountBalance) {
+                        if (sourceBalanceBefore != null) transaction.put("source_balance_before", sourceBalanceBefore);
+                        if (sourceBalanceAfter != null) transaction.put("source_balance_after", sourceBalanceAfter);
+                        if (targetBalanceBefore != null) transaction.put("target_balance_before", targetBalanceBefore);
+                        if (targetBalanceAfter != null) transaction.put("target_balance_after", targetBalanceAfter);
+                    }
+
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("success", true);
+                    response.put("transaction", transaction);
+                    response.put("message", "Transaction created successfully");
+
+                    Logger.log("   [POST SUCCESS] New Transaction - From: " + sourceAccount + 
+                               " | Amount: " + amount + " | Type: " + type, C.N.GREEN);
+
+                    conn.commit();
+                    sendJsonResponse(exchange, 201, response);
+                    return;
+                } else {
+                    conn.rollback();
+                    sendErrorResponse(exchange, 500, "Failed to create transaction");
+                    return;
+                }
+            }
+        } catch (SQLException e) {
+            try { conn.rollback(); } catch (Exception ex) {}
+            Logger.log("   [POST ERROR] " + e.getMessage(), C.N.RED);
+            sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage());
+            return;
+        } finally {
+            try { conn.setAutoCommit(restoreAuto); } catch (Exception ex) {}
         }
     }
     

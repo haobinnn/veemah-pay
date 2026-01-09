@@ -63,22 +63,24 @@ export default function UserPage() {
     };
   }, [t]);
 
-  const fetchMe = useCallback(async () => {
+  const fetchMe = useCallback(async (): Promise<Account | null> => {
     try {
       const res = await fetch("/api/me");
       const data: any = await readJson(res);
       if (!res.ok) {
         setError(data?.error || t('user.operation_failed'));
-        return;
+        return null;
       }
       if (data?.authenticated) {
-        if (!!data?.isAdmin) { router.replace("/admin"); return; }
+        if (!!data?.isAdmin) { router.replace("/admin"); return null; }
         setMe(data.account);
-        return;
+        return data.account as Account;
       }
       router.replace("/login");
+      return null;
     } catch (e: any) {
       setError(e?.message || t('user.operation_failed'));
+      return null;
     }
   }, [router, t]);
 
@@ -98,11 +100,11 @@ export default function UserPage() {
   }, [t]);
 
   const refreshData = useCallback(async () => {
-    if (!me) return;
     setRefreshing(true);
     try {
-      await fetchMe();
-      await fetchTransactions(me.account_number);
+      const updated = await fetchMe();
+      const acc = updated?.account_number ?? me?.account_number;
+      if (acc) await fetchTransactions(acc);
     } catch (e: any) {
       setError(e?.message || t('user.operation_failed'));
     } finally {
@@ -199,6 +201,13 @@ export default function UserPage() {
         const result = await createTransaction(transactionData);
         if (result.success) {
           opOk = true;
+          // If Java server returned updated balances, reflect them immediately
+          try {
+            const tx: any = result.transaction;
+            if (tx && typeof tx.source_balance_after !== 'undefined') {
+              setMe((prev) => prev ? { ...prev, balance: Number(tx.source_balance_after) } : prev);
+            }
+          } catch {}
         } else {
           throw new Error(result.message || 'Transaction failed');
         }
@@ -271,6 +280,12 @@ export default function UserPage() {
         const result = await createTransaction(transactionData);
         if (result.success) {
           opOk = true;
+          try {
+            const tx: any = result.transaction;
+            if (tx && typeof tx.source_balance_after !== 'undefined') {
+              setMe((prev) => prev ? { ...prev, balance: Number(tx.source_balance_after) } : prev);
+            }
+          } catch {}
         } else {
           throw new Error(result.message || 'Transfer failed');
         }

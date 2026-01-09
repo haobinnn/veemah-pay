@@ -28,9 +28,19 @@ function createHeaders(
 		headers["Content-Type"] = "application/json";
 	}
 
-	// Add ngrok skip warning header for tunnel requests
-	if (JAVA_API_BASE && (JAVA_API_BASE.includes("ngrok") || JAVA_API_BASE.includes("tunnel"))) {
+	// Always add ngrok skip warning header for any external/tunnel requests
+	// This is safe to include even for non-ngrok URLs and ensures bypass works
+	const shouldAddNgrokHeader = JAVA_API_BASE && (
+		JAVA_API_BASE.includes("ngrok") || 
+		JAVA_API_BASE.includes("tunnel") ||
+		JAVA_API_BASE.includes("ngrok-free.dev") ||
+		JAVA_API_BASE.startsWith("https://") ||
+		!JAVA_API_BASE.startsWith("http://localhost")
+	);
+	
+	if (shouldAddNgrokHeader) {
 		headers["ngrok-skip-browser-warning"] = "true";
+		console.log(`🌐 Adding ngrok header for URL: ${JAVA_API_BASE}`);
 	}
 
 	return headers;
@@ -558,13 +568,27 @@ export const config = {
 
 	// Log configuration for debugging
 	logConfig() {
+		const shouldAddNgrokHeader = JAVA_API_BASE && (
+			JAVA_API_BASE.includes("ngrok") || 
+			JAVA_API_BASE.includes("tunnel") ||
+			JAVA_API_BASE.includes("ngrok-free.dev") ||
+			JAVA_API_BASE.startsWith("https://") ||
+			!JAVA_API_BASE.startsWith("http://localhost")
+		);
+		
 		console.log("🔧 Java API Configuration:", {
 			apiBase: this.apiBase,
 			isProduction: this.isProduction,
 			useJavaServer: this.useJavaServer,
 			autoFallback: this.autoFallback,
-			hasNgrokHeader:
-				this.apiBase && (this.apiBase.includes("ngrok") || this.apiBase.includes("tunnel")),
+			shouldAddNgrokHeader,
+			ngrokDetection: {
+				containsNgrok: this.apiBase?.includes("ngrok"),
+				containsTunnel: this.apiBase?.includes("tunnel"), 
+				containsNgrokFreeDev: this.apiBase?.includes("ngrok-free.dev"),
+				isHttps: this.apiBase?.startsWith("https://"),
+				isNotLocalhost: this.apiBase && !this.apiBase.startsWith("http://localhost")
+			},
 			env: {
 				NEXT_PUBLIC_JAVA_API_URL: process.env.NEXT_PUBLIC_JAVA_API_URL,
 				JAVA_TRANSACTION_API: process.env.JAVA_TRANSACTION_API,
